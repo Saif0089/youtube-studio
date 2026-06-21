@@ -12,6 +12,7 @@ A faceless storytelling engine — this repo currently contains the **M1 YouTube
    - Choose **External** user type.
    - Fill in app name and contact email.
    - Under **Test users**, add your own Google account (the channel you'll upload to).
+   - **Important for a 24/7 automation — set Publishing status to "In production"** (OAuth consent screen → "Publish app"). While the app stays in **"Testing"**, refresh tokens **expire after 7 days**, which would break the daily engine every week. For your own account you can publish without Google's verification review — you'll just see an "unverified app" warning during consent that you can safely bypass.
 4. Create an **OAuth client credential** (APIs & Services → Credentials → Create Credentials → OAuth client ID):
    - Application type: **Desktop app**.
    - Note the generated **Client ID** and **Client Secret**.
@@ -36,15 +37,16 @@ A faceless storytelling engine — this repo currently contains the **M1 YouTube
 npm run mint-token
 ```
 
-Follow the prompts: a URL will be printed — open it in your browser, grant access, then paste the returned code back into the terminal. The script will print a `YT_REFRESH_TOKEN` value; copy it into `.env`.
+Running this **opens your browser automatically** (modern loopback flow — no copy/paste). Approve YouTube access for the channel you'll upload to. The script captures the response on a temporary `http://localhost` port and prints a line like:
 
-> **Known limitation — OOB flow deprecation:**
-> Google has deprecated the out-of-band (OOB) copy/paste OAuth flow. If `npm run mint-token` fails with `invalid_request`, use one of these alternatives to mint the refresh token:
->
-> - **Loopback redirect:** update the redirect URI in your OAuth client to `http://localhost:PORT` and adjust the script accordingly.
-> - **Google OAuth Playground:** visit [https://developers.google.com/oauthplayground](https://developers.google.com/oauthplayground), click the gear icon, enable "Use your own OAuth credentials", enter your Client ID/Secret, select `https://www.googleapis.com/auth/youtube.upload` scope, authorise, and exchange the code for a refresh token.
->
-> This is a known limitation to harden in a future milestone.
+```
+YT_REFRESH_TOKEN=1//0g...long-token...
+```
+
+Copy that line into your `.env`.
+
+> - If you see an **"unverified app"** warning, click **Advanced → Go to &lt;app&gt;** — it's your own app, safe to proceed.
+> - If no `refresh_token` is printed, just re-run the command (it forces a fresh consent each time).
 
 ---
 
