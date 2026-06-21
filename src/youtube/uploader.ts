@@ -10,6 +10,7 @@ export interface UploadOptions {
 
 export async function uploadVideo(auth: OAuth2Client, opts: UploadOptions): Promise<string> {
   if (!existsSync(opts.videoPath)) throw new Error(`Video not found: ${opts.videoPath}`);
+  if (!opts.publishAt || isNaN(Date.parse(opts.publishAt))) throw new Error(`Invalid publishAt (expected ISO-8601 UTC): ${opts.publishAt}`);
   const youtube = google.youtube({ version: "v3", auth });
 
   const res = await youtube.videos.insert({

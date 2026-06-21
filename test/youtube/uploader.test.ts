@@ -21,6 +21,7 @@ describe("uploadVideo", () => {
     const id = await uploadVideo({} as any, baseOpts as any);
     expect(id).toBe("VID123");
     const arg = insert.mock.calls[0][0];
+    expect(arg.part).toContain("snippet");
     expect(arg.part).toContain("status");
     expect(arg.requestBody.status.privacyStatus).toBe("private");
     expect(arg.requestBody.status.publishAt).toBe("2026-07-01T15:00:00Z");
@@ -34,5 +35,10 @@ describe("uploadVideo", () => {
   it("does not set a thumbnail when not provided", async () => {
     await uploadVideo({} as any, baseOpts as any);
     expect(setThumb).not.toHaveBeenCalled();
+  });
+  it("rejects when publishAt is an invalid date string", async () => {
+    await expect(
+      uploadVideo({} as any, { ...baseOpts, publishAt: "not-a-date" } as any),
+    ).rejects.toThrow(/Invalid publishAt/);
   });
 });

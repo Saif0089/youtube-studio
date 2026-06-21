@@ -9,6 +9,7 @@
     "mint-token": "tsx src/scripts/mint-refresh-token.ts",
     "smoke-upload": "tsx src/scripts/smoke-upload.ts"
   },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "googleapis": "^144.0.0",
     "dotenv": "^16.4.5"
