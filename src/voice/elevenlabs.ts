@@ -13,7 +13,7 @@ export async function synthesizeChunk(cfg: VoiceConfig, text: string): Promise<B
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${cfg.voiceId}`, {
     method: "POST",
     headers: { "xi-api-key": cfg.apiKey, "Content-Type": "application/json", Accept: "audio/mpeg" },
-    body: JSON.stringify({ text, model_id: MODEL_ID, voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+    body: JSON.stringify({ text, model_id: MODEL_ID, voice_settings: { stability: 0.35, similarity_boost: 0.85, style: 0.35, use_speaker_boost: true } }),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
