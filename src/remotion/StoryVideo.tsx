@@ -98,7 +98,7 @@ export const StoryVideo: React.FC<StoryProps> = (props) => {
       <AbsoluteFill style={{ backgroundColor: "#000", opacity: blackOpacity }} />
 
       <Audio src={staticFile(props.audioSrc)} />
-      <Audio src={staticFile(props.musicSrc)} volume={0.33} />
+      <Audio src={staticFile(props.musicSrc)} volume={0.5} />
     </AbsoluteFill>
   );
 };

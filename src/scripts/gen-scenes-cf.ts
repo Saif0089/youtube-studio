@@ -21,7 +21,7 @@ for (let i = 0; i < prompts.length; i++) {
       const res = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompts[i] + STYLE, steps: 8 }),
+        body: JSON.stringify({ prompt: prompts[i] + STYLE, steps: 8, width: 1280, height: 720 }),
       });
       if (res.ok) {
         const data: any = await res.json();
