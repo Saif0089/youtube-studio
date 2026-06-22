@@ -40,8 +40,9 @@ export const ExplainerVideo: React.FC<ExplainerProps> = (props) => {
   const frame = useCurrentFrame();
   const t = frame / fps;
   const n = props.images.length;
-  const imgDurSec = props.narrationDurSec / n;          // images play IN ORDER across the narration (each ~3s when enough images)
-  const imgDurFrames = Math.round(imgDurSec * fps);
+  const slotSec = props.imgMaxSec ?? 4;                 // each drawing shows this long; images play in order
+  const slotFrames = Math.round(slotSec * fps);
+  const slots = Math.ceil(props.narrationDurSec / slotSec);
   const xfade = Math.round(0.3 * fps);
 
   const titleOpacity = interpolate(t, [0.3, 1.1, 3.6, 4.4], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -52,11 +53,12 @@ export const ExplainerVideo: React.FC<ExplainerProps> = (props) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
-      {props.images.map((src, i) => {
-        const start = Math.round(i * imgDurSec * fps);
+      {Array.from({ length: slots }).map((_, i) => {
+        const src = props.images[i % n];               // play in order; cycle only if fewer images than slots
+        const start = i * slotFrames;
         const from = i === 0 ? 0 : start - xfade;
-        const isLast = i === n - 1;
-        const end = isLast ? props.durationInFrames : start + imgDurFrames + xfade;
+        const isLast = i === slots - 1;
+        const end = isLast ? props.durationInFrames : start + slotFrames + xfade;
         const dur = end - from;
         return (
           <Sequence key={i} from={Math.max(0, from)} durationInFrames={dur}>

@@ -6,7 +6,7 @@ if (!apiKey) { console.error("GEMINI_API_KEY missing"); process.exit(1); }
 const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
 const targetWords = Number(process.env.SCRIPT_WORDS || 2000);
 const sections = Number(process.env.SCRIPT_SECTIONS || 9);
-const wordsPerImage = Number(process.env.WORDS_PER_IMAGE || 7); // ~7 words ≈ 3s of speech → one drawing per beat
+const wordsPerImage = Number(process.env.WORDS_PER_IMAGE || 10); // ~10 words ≈ 4s of speech → one drawing per beat
 const wordsPerSection = Math.max(120, Math.round(targetWords / sections));
 const imgsPerSection = Math.max(4, Math.ceil(wordsPerSection / wordsPerImage));
 const PACE = Number(process.env.GEMINI_PACE_MS || 4000); // spacing between calls to respect free-tier RPM

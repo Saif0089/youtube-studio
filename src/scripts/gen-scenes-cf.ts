@@ -8,7 +8,7 @@ if (!acct || !token) { console.error("Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_A
 const MODEL = process.env.CF_IMAGE_MODEL || "@cf/black-forest-labs/flux-1-schnell";
 const STEPS = Number(process.env.CF_STEPS || 4);
 const STYLE =
-  ", simple black stick figure doodle, hand-drawn thick black marker lines on a plain solid white background, minimalist whiteboard explainer cartoon, lots of empty white space, centered, no text, no letters, no words, no numbers, no color, clean line art";
+  ", colorful minimalist whiteboard explainer cartoon, hand-drawn thick black marker outlines with bright flat color fills (cheerful yellow, red, blue, green, orange), include a simple light flat background or setting that fits the scene when it helps (a room, wall, street, desk, sky), soft pastel background colors, clean and uncluttered, no text, no letters, no numbers, no shading";
 
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
 const prompts: string[] = story.imagePrompts;
