@@ -5,7 +5,7 @@ const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) { console.error("GEMINI_API_KEY missing"); process.exit(1); }
 const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
 const targetWords = Number(process.env.SCRIPT_WORDS || 2000);
-const sceneCount = Number(process.env.SCENE_COUNT || 40);
+const sceneCount = Number(process.env.SCENE_COUNT || 80);
 const sections = Number(process.env.SCRIPT_SECTIONS || 9);
 const wordsPerSection = Math.max(120, Math.round(targetWords / sections));
 const PACE = Number(process.env.GEMINI_PACE_MS || 4000); // spacing between calls to respect free-tier RPM

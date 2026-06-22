@@ -10,7 +10,7 @@ on:
         default: "2000"
       scenes:
         description: "Number of scenes / images"
-        default: "40"
+        default: "80"
   repository_dispatch:           # lets cron-job.org trigger via the GitHub API
     types: [build-video]
 
@@ -38,7 +38,7 @@ jobs:
       - name: Build + upload daily video
         env:
           SCRIPT_WORDS: ${{ github.event.inputs.words || '2000' }}
-          SCENE_COUNT: ${{ github.event.inputs.scenes || '40' }}
+          SCENE_COUNT: ${{ github.event.inputs.scenes || '80' }}
           VOICE_PROVIDER: "edge"          # edge (free) | eleven (your clone, uses quota)
           EDGE_VOICE: "en-US-AndrewNeural"
           CF_STEPS: "4"                    # FLUX steps for the doodle line-art
