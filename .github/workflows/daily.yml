@@ -1,0 +1,48 @@
+name: Daily Video
+
+on:
+  schedule:
+    - cron: "0 13 * * *"        # ~13:00 UTC daily (adjust to your audience)
+  workflow_dispatch: {}          # manual run button
+  repository_dispatch:           # lets cron-job.org trigger via the GitHub API
+    types: [build-video]
+
+permissions:
+  contents: write                # to commit state/used-topics.json back
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install deps
+        run: npm ci
+      - name: Ensure Remotion browser
+        run: npx remotion browser ensure
+      - name: Build + upload daily video
+        env:
+          SCRIPT_WORDS: "1400"
+          SCENE_COUNT: "18"
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npx tsx src/scripts/make-daily.ts
+      - name: Persist used-topics (avoid repeats)
+        run: |
+          git config user.name "infotainmentstu-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add state/used-topics.json || true
+          git commit -m "chore: update used-topics [skip ci]" || echo "nothing to commit"
+          git push || true
