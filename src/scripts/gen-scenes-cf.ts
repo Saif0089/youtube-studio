@@ -52,5 +52,7 @@ for (let i = 0; i < prompts.length; i++) {
     console.error(`scene-${i + 1} FAILED with no fallback`);
     process.exit(1);
   }
+  if ((i + 1) % 20 === 0) console.log(`  …${i + 1}/${prompts.length} drawings`);
+  await new Promise((r) => setTimeout(r, 250)); // gentle pacing for large batches
 }
-console.log("✅ all scenes generated (Cloudflare FLUX)");
+console.log(`✅ all ${prompts.length} drawings generated (Cloudflare FLUX)`);
