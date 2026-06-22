@@ -4,8 +4,8 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) { console.error("GEMINI_API_KEY missing"); process.exit(1); }
 const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
-const targetWords = Number(process.env.SCRIPT_WORDS || 1400);
-const sceneCount = Number(process.env.SCENE_COUNT || 18);
+const targetWords = Number(process.env.SCRIPT_WORDS || 2000);
+const sceneCount = Number(process.env.SCENE_COUNT || 40);
 
 await mkdir("out", { recursive: true });
 await mkdir("state", { recursive: true });
@@ -26,16 +26,16 @@ const schema = {
   required: ["title", "topic", "description", "tags", "onScreenTitle", "script", "imagePrompts"],
 };
 
-const prompt = `You write for "InfotainmentStu", a YouTube channel about REAL unsolved mysteries, strange history, and fascinating true stories — cinematic, accurate, easy to follow.
+const prompt = `You write for "InfotainmentStu", a YouTube channel of fascinating PSYCHOLOGY & SCIENCE explainers — "the real reason..." style curiosity videos that explain why humans and the world work the way they do. Clear, accurate, surprising, easy to follow.
 
 Create ONE new video.
-- Pick a genuinely REAL, well-documented mystery or fascinating true topic (history, science, unexplained events, strange places, lost things, etc.). Do NOT write fiction. Do NOT invent fake statistics, dates, names, or quotes — if unsure of a detail, keep it general.
+- Pick a genuinely interesting, REAL psychology/science/human-behavior question (e.g. "the real reason we procrastinate", "why the dark scares us", "why time feels faster as you age", "why we cry"). It must be grounded in real, well-established science. Do NOT invent fake studies, statistics, names, or quotes — if unsure of a detail, keep it general and accurate.
 - Avoid these already-used topics: ${used.length ? used.join("; ") : "(none yet)"}.
-- "script": spoken narration ONLY (no stage directions, no "[music]", no references to on-screen text). About ${targetWords} words. A strong hook in the first 2 sentences, an engaging middle that builds, and a satisfying conclusion. Conversational and vivid, written to be read aloud.
-- "imagePrompts": exactly ${sceneCount} vivid cinematic atmospheric image descriptions that follow the narration in order. Each describes a scene/setting only — NO readable text, NO close-up real human faces, NO logos. (A consistent visual style is added later, so don't specify style.)
+- "script": spoken narration ONLY (no stage directions, no "[music]", no references to on-screen text). About ${targetWords} words. Open with a relatable hook in the first 2 sentences, build the explanation in clear digestible steps with a surprising insight or two, and end with a satisfying reframe. Conversational, vivid, second-person ("you"), written to be read aloud.
+- "imagePrompts": exactly ${sceneCount} prompts, one per beat of the narration in order. Each must describe ONE simple scene drawable as a minimalist stick-figure doodle: a stick figure doing a clear action, or a single simple object/diagram. Examples: "a stick figure lying awake in bed staring at the ceiling", "a stick figure running away from a giant question mark", "a simple drawing of a brain with one area glowing", "a stick figure at a desk with a clock above". Keep each to one clear visual idea. NO readable text, NO logos, NO realistic faces. (The hand-drawn stick-figure style is added automatically later, so don't restate style.)
 - "onScreenTitle": a punchy 2-4 word on-screen title.
-- "title": a compelling YouTube title (<= 70 chars).
-- "description": 2-3 sentences, then a blank line, then "InfotainmentStu — real mysteries, told simply."
+- "title": a compelling, curiosity-driven YouTube title (<= 70 chars), ideally starting like "The Real Reason..." or "Why...".
+- "description": 2-3 sentences, then a blank line, then "InfotainmentStu — the science of being human, explained simply."
 - "tags": 8-12 relevant tags.
 Return JSON only.`;
 

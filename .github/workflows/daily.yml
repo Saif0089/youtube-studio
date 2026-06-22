@@ -7,10 +7,10 @@ on:
     inputs:
       words:
         description: "Script word count"
-        default: "1400"
+        default: "2000"
       scenes:
         description: "Number of scenes / images"
-        default: "18"
+        default: "40"
   repository_dispatch:           # lets cron-job.org trigger via the GitHub API
     types: [build-video]
 
@@ -29,14 +29,19 @@ jobs:
           cache: "npm"
       - name: Install ffmpeg + fonts
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-liberation fonts-dejavu-core
+      - name: Install uv (for free Edge-TTS narration)
+        uses: astral-sh/setup-uv@v5
       - name: Install deps
         run: npm ci
       - name: Ensure Remotion browser
         run: npx remotion browser ensure
       - name: Build + upload daily video
         env:
-          SCRIPT_WORDS: ${{ github.event.inputs.words || '1400' }}
-          SCENE_COUNT: ${{ github.event.inputs.scenes || '18' }}
+          SCRIPT_WORDS: ${{ github.event.inputs.words || '2000' }}
+          SCENE_COUNT: ${{ github.event.inputs.scenes || '40' }}
+          VOICE_PROVIDER: "edge"          # edge (free) | eleven (your clone, uses quota)
+          EDGE_VOICE: "en-US-AndrewNeural"
+          CF_STEPS: "4"                    # FLUX steps for the doodle line-art
           PUBLISH_MODE: "approval"   # upload PRIVATE for review; set to "auto" to schedule public
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}

@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { loadVoiceConfig } from "../config.js";
 
 const cfg = loadVoiceConfig();
@@ -32,5 +32,6 @@ for (let attempt = 1; ; attempt++) {
 await writeFile("out/narration.mp3", Buffer.from(data.audio_base64, "base64"));
 const al = data.alignment ?? data.normalized_alignment ?? {};
 await writeFile("out/alignment.json", JSON.stringify(al));
+await rm("out/words.json", { force: true }); // drop stale Edge timing so prepare-render uses this alignment
 const ends = al.character_end_times_seconds ?? [];
 console.log(`audio saved; chars=${(al.characters ?? []).length}; dur=${ends.length ? ends[ends.length - 1] : "?"}s`);

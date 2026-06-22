@@ -6,8 +6,9 @@ const token = process.env.CLOUDFLARE_API_TOKEN;
 if (!acct || !token) { console.error("Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in .env"); process.exit(1); }
 
 const MODEL = process.env.CF_IMAGE_MODEL || "@cf/black-forest-labs/flux-1-schnell";
+const STEPS = Number(process.env.CF_STEPS || 4);
 const STYLE =
-  ", cinematic widescreen 16:9, photorealistic, highly detailed, atmospheric, muted desaturated teal-grey palette, soft dramatic lighting, volumetric fog, film grain, eerie haunting, no people, no text";
+  ", simple black stick figure doodle, hand-drawn thick black marker lines on a plain solid white background, minimalist whiteboard explainer cartoon, lots of empty white space, centered, no text, no letters, no words, no numbers, no color, clean line art";
 
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
 const prompts: string[] = story.imagePrompts;
@@ -21,7 +22,7 @@ for (let i = 0; i < prompts.length; i++) {
       const res = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompts[i] + STYLE, steps: 8, width: 1280, height: 720 }),
+        body: JSON.stringify({ prompt: prompts[i] + STYLE, steps: STEPS, width: 1280, height: 720 }),
       });
       if (res.ok) {
         const data: any = await res.json();
