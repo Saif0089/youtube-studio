@@ -4,6 +4,7 @@ import { AbsoluteFill, Audio, Img, Sequence, interpolate, useCurrentFrame, useVi
 type Word = { text: string; start: number; end: number };
 type Line = { start: number; end: number; words: Word[] };
 type Cue = { text: string; start: number; end: number };
+type Seg = { start: number; end: number };
 export type ExplainerProps = {
   fps: number;
   durationInFrames: number;
@@ -11,7 +12,7 @@ export type ExplainerProps = {
   fadeTailSec: number;
   audioSrc: string;
   musicSrc: string;
-  imgMaxSec?: number;
+  segments?: Seg[];
   images: string[];
   captions: Cue[];
   lines: Line[];
@@ -41,10 +42,11 @@ export const ExplainerVideo: React.FC<ExplainerProps> = (props) => {
   const frame = useCurrentFrame();
   const t = frame / fps;
   const n = props.images.length;
-  const slotSec = props.imgMaxSec ?? 4;                 // each drawing shows this long; images play in order
-  const slotFrames = Math.round(slotSec * fps);
-  const slots = Math.ceil(props.narrationDurSec / slotSec);
   const xfade = Math.round(0.3 * fps);
+  // each image is timed to the sentence it illustrates (segments); fallback = even split
+  const segs: Seg[] = props.segments && props.segments.length === n
+    ? props.segments
+    : props.images.map((_, i) => ({ start: (i * props.narrationDurSec) / n, end: ((i + 1) * props.narrationDurSec) / n }));
 
   const titleOpacity = interpolate(t, [0.3, 1.1, 3.6, 4.4], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const endStart = props.narrationDurSec - 0.2;
@@ -54,13 +56,13 @@ export const ExplainerVideo: React.FC<ExplainerProps> = (props) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
-      {Array.from({ length: slots }).map((_, i) => {
-        const src = props.images[i % n];               // play in order; cycle only if fewer images than slots
-        const start = i * slotFrames;
+      {props.images.map((src, i) => {
+        const seg = segs[i];
+        const start = Math.round(seg.start * fps);
         const from = i === 0 ? 0 : start - xfade;
-        const isLast = i === slots - 1;
-        const end = isLast ? props.durationInFrames : start + slotFrames + xfade;
-        const dur = end - from;
+        const isLast = i === n - 1;
+        const end = isLast ? props.durationInFrames : Math.round(seg.end * fps) + xfade;
+        const dur = Math.max(1, end - from);
         return (
           <Sequence key={i} from={Math.max(0, from)} durationInFrames={dur}>
             <PopImage src={src} dur={dur} />

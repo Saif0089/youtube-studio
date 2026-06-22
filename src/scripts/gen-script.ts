@@ -1,22 +1,21 @@
 import "dotenv/config";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { splitForVisuals } from "../lib/sentences.js";
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) { console.error("GEMINI_API_KEY missing"); process.exit(1); }
 const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
 const targetWords = Number(process.env.SCRIPT_WORDS || 2000);
 const sections = Number(process.env.SCRIPT_SECTIONS || 9);
-const wordsPerImage = Number(process.env.WORDS_PER_IMAGE || 10); // ~10 words ≈ 4s of speech → one drawing per beat
 const wordsPerSection = Math.max(120, Math.round(targetWords / sections));
-const imgsPerSection = Math.max(4, Math.ceil(wordsPerSection / wordsPerImage));
-const PACE = Number(process.env.GEMINI_PACE_MS || 4000); // spacing between calls to respect free-tier RPM
+const PACE = Number(process.env.GEMINI_PACE_MS || 4000);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 await mkdir("out", { recursive: true });
 await mkdir("state", { recursive: true });
 let used: string[] = [];
 try { used = JSON.parse(await readFile("state/used-topics.json", "utf8")); } catch {}
 
-// --- Gemini call with retry/backoff; schema => JSON mode, else plain text ---
 async function gemini(prompt: string, schema?: any): Promise<string> {
   const generationConfig: any = { temperature: 1.0, maxOutputTokens: 8192 };
   if (schema) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = schema; }
@@ -33,27 +32,24 @@ async function gemini(prompt: string, schema?: any): Promise<string> {
     if ([429, 500, 502, 503, 504].includes(res.status) && attempt <= 6) {
       const wait = 5000 * attempt;
       console.log(`Gemini ${res.status} (attempt ${attempt}) — retrying in ${wait / 1000}s…`);
-      await new Promise((r) => setTimeout(r, wait));
+      await sleep(wait);
       continue;
     }
     console.error(`HTTP ${res.status}: ${errTxt}`); process.exit(1);
   }
 }
 
-// --- Pass 1: plan (metadata + section outline) ---
+// --- Pass 1: plan ---
 const planSchema = {
   type: "object",
   properties: {
-    title: { type: "string" },
-    topic: { type: "string" },
-    description: { type: "string" },
-    tags: { type: "array", items: { type: "string" } },
-    onScreenTitle: { type: "string" },
+    title: { type: "string" }, topic: { type: "string" }, description: { type: "string" },
+    tags: { type: "array", items: { type: "string" } }, onScreenTitle: { type: "string" },
     sections: { type: "array", items: { type: "object", properties: { heading: { type: "string" }, summary: { type: "string" } }, required: ["heading", "summary"] } },
   },
   required: ["title", "topic", "description", "tags", "onScreenTitle", "sections"],
 };
-const planPrompt = `You plan videos for "InfotainmentStu", a YouTube channel of fascinating PSYCHOLOGY & SCIENCE explainers — "the real reason..." style curiosity videos that explain why humans and the world work the way they do.
+const planPrompt = `You plan videos for "InfotainmentStu", a YouTube channel of fascinating PSYCHOLOGY & SCIENCE explainers — "the real reason..." curiosity videos that explain why humans and the world work the way they do.
 
 Plan ONE new video.
 - Pick a genuinely interesting, REAL psychology/science/human-behavior question grounded in well-established science. No invented studies, names, numbers, or quotes.
@@ -62,56 +58,61 @@ Plan ONE new video.
 - "onScreenTitle": punchy 2-4 word on-screen title.
 - "description": 2-3 sentences, then a blank line, then "InfotainmentStu — the science of being human, explained simply."
 - "tags": 8-12 relevant tags.
-- "sections": EXACTLY ${sections} sections that together tell a complete, building explanation (hook → context → the science → a surprising insight or two → satisfying reframe). Each has a "heading" and a 1-2 sentence "summary". Sections flow in order and do not overlap.
+- "sections": EXACTLY ${sections} sections that together tell a complete, building explanation (hook → context → the science → a surprising insight or two → satisfying reframe). Each has a "heading" and a 1-2 sentence "summary". In order, no overlap.
 Return JSON only.`;
 
 const plan = JSON.parse(await gemini(planPrompt, planSchema));
-console.log(`planned "${plan.title}" — ${plan.sections.length} sections, ~${imgsPerSection} drawings each`);
+console.log(`planned "${plan.title}" — ${plan.sections.length} sections`);
 
-// --- Pass 2: per section -> narration + ORDERED drawings that illustrate it ---
-const secSchema = {
-  type: "object",
-  properties: { narration: { type: "string" }, imagePrompts: { type: "array", items: { type: "string" } } },
-  required: ["narration", "imagePrompts"],
-};
+// --- Pass 2: per-section narration ---
 const parts: string[] = [];
-const allPrompts: string[] = [];
 for (let s = 0; s < plan.sections.length; s++) {
   const sec = plan.sections[s];
   const first = s === 0, last = s === plan.sections.length - 1;
   const role = first ? "This is the opening — start with a strong, relatable hook in the first two sentences."
     : last ? "This is the FINAL section — end with a satisfying, thought-provoking reframe (no 'in conclusion')." : "";
   const prevTail = parts.length ? parts[parts.length - 1].split(/\s+/).slice(-25).join(" ") : "";
-  const secPrompt = `You are writing a YouTube psychology/science explainer. Title: "${plan.title}". Topic: ${plan.topic}.
-Write this section: "${sec.heading}" — ${sec.summary}
-
-Return JSON with two fields:
-- "narration": the SPOKEN narration for ONLY this section, about ${wordsPerSection} words — write the full amount. ${role} Continue naturally; no headings, no stage directions, no "[music]", no markdown, no lists; conversational, second-person ("you"); accurate to real science (no invented studies/names/numbers/quotes).${prevTail ? ` The previous section ended: "...${prevTail}". Continue smoothly.` : ""}
-- "imagePrompts": EXACTLY ${imgsPerSection} prompts that ILLUSTRATE this narration IN ORDER — one drawing every few seconds, so the visuals TELL THE STORY as it is spoken. Each is ONE simple minimalist stick-figure doodle: a stick figure doing a clear action, or a single simple object/diagram, that matches what is being said at that moment. Every prompt must be DISTINCT (no repeats, no near-duplicates). No readable text, no logos, no realistic faces. Do not describe art style.
-Return JSON only.`;
-  const obj = JSON.parse(await gemini(secPrompt, secSchema));
-  const narration = String(obj.narration || "").trim();
-  const prompts = (Array.isArray(obj.imagePrompts) ? obj.imagePrompts : []).map((x: any) => String(x).trim()).filter(Boolean);
-  parts.push(narration);
-  allPrompts.push(...prompts);
-  console.log(`  section ${s + 1}/${plan.sections.length}: ${narration.split(/\s+/).filter(Boolean).length} words, ${prompts.length} drawings`);
-  await new Promise((r) => setTimeout(r, PACE));
+  const secPrompt = `You are writing the SPOKEN narration for a YouTube psychology/science explainer. Title: "${plan.title}". Topic: ${plan.topic}.
+Write ONLY the narration for this section: "${sec.heading}" — ${sec.summary}
+About ${wordsPerSection} words — write the full amount. ${role}
+Continue naturally; no headings, no stage directions, no "[music]", no markdown, no lists; conversational, second-person ("you"); accurate to real science (no invented studies/names/numbers/quotes).${prevTail ? ` The previous section ended: "...${prevTail}". Continue smoothly.` : ""}
+Return ONLY the narration text.`;
+  const txt = (await gemini(secPrompt)).trim();
+  parts.push(txt);
+  console.log(`  section ${s + 1}/${plan.sections.length}: ${txt.split(/\s+/).filter(Boolean).length} words`);
+  await sleep(PACE);
 }
 const script = parts.join("\n\n");
-if (allPrompts.length < 10) { console.error("too few image prompts generated"); process.exit(1); }
+
+// --- Pass 3: ONE image prompt per sentence (so visuals illustrate exactly what's said) ---
+const sentences = splitForVisuals(script);
+const promptSchema = { type: "object", properties: { prompts: { type: "array", items: { type: "string" } } }, required: ["prompts"] };
+const BATCH = 40;
+const imagePrompts: string[] = [];
+for (let i = 0; i < sentences.length; i += BATCH) {
+  const batch = sentences.slice(i, i + BATCH);
+  const numbered = batch.map((s, j) => `${j + 1}. ${s}`).join("\n");
+  const bp = `Below are numbered sentences from a psychology/science explainer narration. For EACH sentence, write ONE image prompt: a simple, colorful, minimalist whiteboard doodle that clearly ILLUSTRATES that specific sentence — a stick figure doing a clear action, or a simple object/scene that matches exactly what the sentence is saying. One clear visual idea each, distinct from the others. No readable text, letters, numbers, logos, or realistic faces. Do not describe art style.
+Return JSON {"prompts": [...]} with EXACTLY ${batch.length} prompts, in the same order as the sentences.
+
+Sentences:
+${numbered}`;
+  const out = JSON.parse(await gemini(bp, promptSchema));
+  let arr: string[] = Array.isArray(out.prompts) ? out.prompts.map((x: any) => String(x).trim()).filter(Boolean) : [];
+  while (arr.length < batch.length) arr.push(batch[arr.length]); // fallback: use the sentence text itself
+  if (arr.length > batch.length) arr = arr.slice(0, batch.length);
+  imagePrompts.push(...arr);
+  console.log(`  prompts ${Math.min(i + BATCH, sentences.length)}/${sentences.length}`);
+  await sleep(PACE);
+}
 
 const story = {
-  title: plan.title,
-  topic: plan.topic,
-  description: plan.description,
-  tags: plan.tags,
-  onScreenTitle: plan.onScreenTitle,
-  script,
-  imagePrompts: allPrompts,
+  title: plan.title, topic: plan.topic, description: plan.description, tags: plan.tags,
+  onScreenTitle: plan.onScreenTitle, script, imagePrompts,
 };
 await writeFile("out/story.json", JSON.stringify(story, null, 1));
 used.push(plan.title);
 await writeFile("state/used-topics.json", JSON.stringify(used.slice(-300), null, 1));
 const wc = script.split(/\s+/).filter(Boolean).length;
-console.log(`✅ "${story.title}" — ${wc} words (~${Math.round(wc / 150)} min), ${allPrompts.length} unique drawings`);
+console.log(`✅ "${story.title}" — ${wc} words (~${Math.round(wc / 150)} min), ${imagePrompts.length} sentence-matched drawings`);
 console.log(`   topic: ${story.topic}`);
