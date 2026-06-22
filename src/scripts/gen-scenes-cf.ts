@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 
 const acct = process.env.CLOUDFLARE_ACCOUNT_ID;
 const token = process.env.CLOUDFLARE_API_TOKEN;
@@ -14,6 +14,7 @@ const story = JSON.parse(await readFile("out/story.json", "utf8"));
 const prompts: string[] = story.imagePrompts;
 await mkdir("out", { recursive: true });
 
+let lastGood: string | null = null;
 for (let i = 0; i < prompts.length; i++) {
   const url = `https://api.cloudflare.com/client/v4/accounts/${acct}/ai/run/${MODEL}`;
   let ok = false;
@@ -42,6 +43,14 @@ for (let i = 0; i < prompts.length; i++) {
     }
     await new Promise((r) => setTimeout(r, 2500));
   }
-  if (!ok) { console.error(`scene-${i + 1} FAILED`); process.exit(1); }
+  if (ok) {
+    lastGood = `out/scene-${i + 1}.jpg`;
+  } else if (lastGood) {
+    await copyFile(lastGood, `out/scene-${i + 1}.jpg`); // keep the video whole if one image fails (e.g. daily cap)
+    console.log(`scene-${i + 1}: reused previous (generation failed)`);
+  } else {
+    console.error(`scene-${i + 1} FAILED with no fallback`);
+    process.exit(1);
+  }
 }
 console.log("✅ all scenes generated (Cloudflare FLUX)");

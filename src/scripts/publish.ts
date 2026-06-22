@@ -28,6 +28,23 @@ if (mode === "auto") {
 console.log(`   Review & publish: ${reviewUrl}`);
 console.log(`   Preview:          ${previewUrl}`);
 
+// Discord push notification (if configured) — pings your phone with the review link
+const hook = process.env.DISCORD_WEBHOOK;
+if (hook && mode !== "auto") {
+  try {
+    await fetch(hook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: `🎬 **New video ready for review**\n**${story.title}**\n▶️ Review & publish: <${reviewUrl}>\n👀 Preview: ${previewUrl}`,
+      }),
+    });
+    console.log("   Discord notified");
+  } catch {
+    console.log("   (Discord notify failed — non-fatal)");
+  }
+}
+
 // In GitHub Actions, surface the link on the run page (you get an email on run completion)
 const summaryFile = process.env.GITHUB_STEP_SUMMARY;
 if (summaryFile) {
