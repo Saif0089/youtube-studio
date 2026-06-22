@@ -57,6 +57,7 @@ flush();
 const captions = lines.map((l) => ({ text: l.words.map((w) => w.text).join(" "), start: l.start, end: l.end }));
 
 const tail = 3;
+const imgMaxSec = Number(process.env.IMG_MAX_SEC || 3); // each image shows at most this long (cycles to fill)
 const durationInFrames = Math.round((narrationDur + tail) * fps);
 const n = story.imagePrompts.length;
 const props = {
@@ -64,6 +65,7 @@ const props = {
   durationInFrames,
   narrationDurSec: narrationDur,
   fadeTailSec: tail,
+  imgMaxSec,
   audioSrc: "narration.mp3",
   musicSrc: "music.wav",
   images: Array.from({ length: n }, (_, i) => `scene-${i + 1}.jpg`),
