@@ -36,6 +36,18 @@ async function genOne(prompt: string): Promise<Buffer | null> {
   return null;
 }
 
+// free, no-key, no-cap fallback for when Meshy credits run out
+async function pollinations(prompt: string, seed: number): Promise<Buffer | null> {
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + STYLE)}?width=1280&height=720&model=flux&nologo=true&seed=${seed}`;
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 const done = new Array(prompts.length).fill(false);
 let next = 0, completed = 0;
 async function worker() {
@@ -44,6 +56,7 @@ async function worker() {
     if (i >= prompts.length) break;
     let buf: Buffer | null = null;
     for (let a = 0; a < 3 && !buf; a++) { buf = await genOne(prompts[i]); if (!buf) await sleep(2000); }
+    if (!buf) buf = await pollinations(prompts[i], i + 1); // Meshy out of credits -> free fallback
     if (buf) { await writeFile(`out/scene-${i + 1}.jpg`, buf); done[i] = true; }
     completed++;
     if (completed % 20 === 0) console.log(`  …${completed}/${prompts.length} drawings`);

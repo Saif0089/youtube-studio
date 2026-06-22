@@ -36,6 +36,7 @@ jobs:
         env:
           SCRIPT_WORDS: ${{ github.event.inputs.words || '2000' }}
           VOICE_PROVIDER: "edge"          # edge (free) | eleven (your clone, uses quota)
+          IMAGE_PROVIDER: "meshy"         # meshy (uses credits, auto-falls back to free Pollinations) | cloudflare
           EDGE_VOICE: "en-US-AndrewNeural"
           CF_STEPS: "4"                    # FLUX steps for the doodle line-art
           PUBLISH_MODE: "approval"   # upload PRIVATE for review; set to "auto" to schedule public
@@ -48,6 +49,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
         run: npx tsx src/scripts/make-daily.ts
       - name: Persist used-topics (avoid repeats)
         run: |
