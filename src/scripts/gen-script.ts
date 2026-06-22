@@ -39,16 +39,28 @@ Create ONE new video.
 - "tags": 8-12 relevant tags.
 Return JSON only.`;
 
-const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 1.05 },
-  }),
+const reqBody = JSON.stringify({
+  contents: [{ parts: [{ text: prompt }] }],
+  generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 1.05 },
 });
-if (!res.ok) { console.error(`HTTP ${res.status}: ${(await res.text()).slice(0, 400)}`); process.exit(1); }
-const data: any = await res.json();
+let data: any;
+for (let attempt = 1; ; attempt++) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: reqBody,
+  });
+  if (res.ok) { data = await res.json(); break; }
+  const errTxt = (await res.text()).slice(0, 300);
+  if ([429, 500, 502, 503, 504].includes(res.status) && attempt <= 6) {
+    const wait = 5000 * attempt;
+    console.log(`Gemini ${res.status} (attempt ${attempt}) — retrying in ${wait / 1000}s…`);
+    await new Promise((r) => setTimeout(r, wait));
+    continue;
+  }
+  console.error(`HTTP ${res.status}: ${errTxt}`);
+  process.exit(1);
+}
 const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? "";
 let story: any;
 try { story = JSON.parse(txt); } catch { console.error("JSON parse failed. First 400 chars:\n" + txt.slice(0, 400)); process.exit(1); }
