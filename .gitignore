@@ -4,3 +4,4 @@ dist
 *.local
 /tmp-smoke
 out/
+public/
