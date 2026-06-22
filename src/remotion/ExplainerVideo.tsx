@@ -26,11 +26,12 @@ const DIM = "#c4c4bd";
 
 const PopImage: React.FC<{ src: string; dur: number }> = ({ src, dur }) => {
   const f = useCurrentFrame();
-  const scale = interpolate(f, [0, 11], [0.94, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  // gentle zoom that stays >= 1.0 so the drawing always fills the whole frame (no white bars)
+  const scale = interpolate(f, [0, dur], [1.0, 1.06], { extrapolateRight: "clamp", easing: Easing.inOut(Easing.ease) });
   const opacity = interpolate(f, [0, 8, dur - 8, dur], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ opacity }}>
-      <Img src={staticFile(src)} style={{ width: "100%", height: "82%", objectFit: "contain", transform: `scale(${scale})` }} />
+      <Img src={staticFile(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />
     </AbsoluteFill>
   );
 };
