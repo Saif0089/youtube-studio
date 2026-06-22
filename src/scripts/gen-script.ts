@@ -8,6 +8,7 @@ const targetWords = Number(process.env.SCRIPT_WORDS || 2000);
 const sceneCount = Number(process.env.SCENE_COUNT || 40);
 const sections = Number(process.env.SCRIPT_SECTIONS || 9);
 const wordsPerSection = Math.max(120, Math.round(targetWords / sections));
+const PACE = Number(process.env.GEMINI_PACE_MS || 4000); // spacing between calls to respect free-tier RPM
 
 await mkdir("out", { recursive: true });
 await mkdir("state", { recursive: true });
@@ -84,6 +85,7 @@ Return ONLY the narration text.`;
   const txt = (await gemini(secPrompt)).trim();
   parts.push(txt);
   console.log(`  section ${s + 1}/${plan.sections.length}: ${txt.split(/\s+/).filter(Boolean).length} words`);
+  await new Promise((r) => setTimeout(r, PACE));
 }
 const script = parts.join("\n\n");
 

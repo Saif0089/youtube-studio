@@ -7,9 +7,9 @@ import { getAuthorizedClient } from "../youtube/auth.js";
 const youtube = google.youtube({ version: "v3", auth: getAuthorizedClient(loadConfig()) });
 
 const description =
-  "InfotainmentStu explores the world's most fascinating unsolved mysteries, strange history, and untold true stories — short, cinematic, and easy to follow.\n\nNew mysteries regularly. Subscribe and stay curious.";
+  "InfotainmentStu explains the fascinating science of being human — why you think, feel, and behave the way you do. Clear, surprising psychology and science explainers, simply told.\n\nNew video every day. Subscribe and stay curious.";
 const keywords =
-  'mysteries "unsolved mysteries" "true stories" history infotainment documentary storytelling "strange history" "ghost ships" facts';
+  'psychology science "psychology facts" "human behavior" "the real reason" "why we" brain neuroscience "science explained" explainer educational facts learning';
 
 // 1) get channel id + current branding
 const list = await youtube.channels.list({ part: ["id", "snippet", "brandingSettings"], mine: true } as any);
