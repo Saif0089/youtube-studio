@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 const code = await new Promise<number>((resolve) => {
   const p = spawn("uv", ["run", "--python", "3.12", "--with", "mflux", "python", "tools/gen_local.py"], {
     stdio: "inherit",
-    env: { ...process.env, MFLUX_QUANTIZE: process.env.MFLUX_QUANTIZE || "4" },
+    env: { ...process.env, MFLUX_QUANTIZE: process.env.MFLUX_QUANTIZE || "4", HF_HUB_ENABLE_HF_TRANSFER: "1" },
   });
   p.on("close", (c) => resolve(c ?? 1));
 });
