@@ -1,0 +1,52 @@
+:root {
+  --bg: #0c1330;
+  --card: #141c3f;
+  --ink: #f3f5ff;
+  --muted: #9aa6d6;
+  --accent: #ff7a45;
+  --accent2: #ffb347;
+  --ok: #46d39a;
+  --border: #26305c;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+  background: radial-gradient(1200px 600px at 50% -10%, #182250, var(--bg));
+  color: var(--ink); min-height: 100vh;
+}
+header { text-align: center; padding: 28px 20px 6px; }
+header h1 { margin: 0; font-size: 30px; letter-spacing: -0.5px; }
+.sub { color: var(--muted); margin: 6px 0 0; }
+main { max-width: 760px; margin: 0 auto; padding: 18px 22px 40px; }
+
+.settings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 18px 0; }
+.settings label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.settings select {
+  background: var(--card); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; font-size: 14px;
+}
+button {
+  border: 1px solid var(--border); background: #1b2552; color: var(--ink);
+  border-radius: 12px; padding: 12px 18px; font-size: 15px; cursor: pointer; font-weight: 600;
+}
+button:hover { filter: brightness(1.1); }
+button:disabled { opacity: 0.55; cursor: default; }
+.primary { background: linear-gradient(180deg, var(--accent2), var(--accent)); color: #2a1300; border: none; }
+.big { width: 100%; padding: 16px; font-size: 18px; margin-top: 6px; }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-top: 18px; }
+.hidden { display: none; }
+.status { display: flex; align-items: center; gap: 10px; font-weight: 600; margin-bottom: 10px; }
+#log {
+  background: #0a0f26; border: 1px solid var(--border); border-radius: 10px; color: #cfe;
+  font-size: 12px; line-height: 1.5; max-height: 320px; overflow: auto; padding: 12px; margin: 0; white-space: pre-wrap;
+}
+.done { color: var(--ok); font-weight: 700; font-size: 16px; margin-bottom: 12px; }
+.row { display: flex; gap: 12px; }
+.row button { flex: 1; }
+.link { color: var(--accent2); word-break: break-all; }
+.spinner {
+  width: 16px; height: 16px; border: 3px solid var(--border); border-top-color: var(--accent2);
+  border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

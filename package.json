@@ -7,7 +7,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "mint-token": "tsx src/scripts/mint-refresh-token.ts",
-    "smoke-upload": "tsx src/scripts/smoke-upload.ts"
+    "smoke-upload": "tsx src/scripts/smoke-upload.ts",
+    "make-video": "tsx src/scripts/make-video.ts",
+    "app": "tauri dev",
+    "app:build": "tauri build",
+    "tauri": "tauri"
   },
   "engines": {
     "node": ">=20"
@@ -21,6 +25,7 @@
     "remotion": "^4.0.481"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.3",
     "@types/node": "^22.7.0",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",

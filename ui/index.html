@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InfotainmentStu Studio</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🎬 InfotainmentStu Studio</h1>
+      <p class="sub">Generate → preview → upload — all on your Mac</p>
+    </header>
+
+    <main>
+      <section class="settings">
+        <label>Length
+          <select id="words">
+            <option value="1200">Short · ~8 min</option>
+            <option value="2000" selected>Standard · ~13 min</option>
+            <option value="2600">Long · ~17 min</option>
+          </select>
+        </label>
+        <label>Voice
+          <select id="voice">
+            <option value="en-US-AndrewNeural" selected>Andrew (calm M)</option>
+            <option value="en-US-GuyNeural">Guy (M)</option>
+            <option value="en-US-ChristopherNeural">Christopher (M)</option>
+            <option value="en-US-EmmaMultilingualNeural">Emma (F)</option>
+          </select>
+        </label>
+        <label>Drawings
+          <select id="provider">
+            <option value="meshy" selected>Meshy · crisp (credits)</option>
+            <option value="pollinations">Pollinations · free</option>
+            <option value="cloudflare">Cloudflare · free 100/day</option>
+          </select>
+        </label>
+      </section>
+
+      <button id="make" class="primary big">Make Video</button>
+
+      <section id="progress" class="card hidden">
+        <div class="status"><span class="spinner" id="spin"></span><span id="statusText">Working…</span></div>
+        <pre id="log"></pre>
+      </section>
+
+      <section id="result" class="card hidden">
+        <div class="done">✅ Video ready to review</div>
+        <div class="row">
+          <button id="preview">▶ Preview</button>
+          <button id="upload" class="primary">⬆ Upload to YouTube (private)</button>
+        </div>
+        <div id="uploadResult" class="hidden">
+          <p>Uploaded privately for review:</p>
+          <a href="#" id="reviewLink" class="link"></a>
+        </div>
+      </section>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -5,3 +5,5 @@ dist
 /tmp-smoke
 out/
 public/
+src-tauri/target/
+src-tauri/gen/
