@@ -1,3 +1,4 @@
+import "dotenv/config"; // makes HF_TOKEN (for the one-time gated model download) available to mflux
 import { spawn } from "node:child_process";
 
 // Local FLUX via MLX (mflux). uv runs it in an isolated Python 3.12 env (auto-installs mflux).
