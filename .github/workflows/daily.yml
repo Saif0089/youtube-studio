@@ -2,17 +2,18 @@ name: Daily Video
 
 on:
   schedule:
-    - cron: "37 13 * * *"       # 13:37 UTC daily (off the top-of-hour; GitHub heavily delays/skips :00 jobs)
-  workflow_dispatch:             # manual run button (test with a small word count)
+    - cron: "37 13 * * *"       # primary: 13:37 UTC (off the top-of-hour; GitHub heavily delays/skips :00 jobs)
+    - cron: "17 16 * * *"       # backup: 16:17 UTC — runs only if the primary was delayed/skipped/failed (guard prevents a double)
+  workflow_dispatch:             # manual run button (always runs)
     inputs:
       words:
         description: "Script word count"
         default: "2000"
-  repository_dispatch:           # lets cron-job.org trigger via the GitHub API
+  repository_dispatch:           # external trigger (e.g. cron-job.org) via the GitHub API; always runs
     types: [build-video]
 
 permissions:
-  contents: write                # to commit state/used-topics.json back
+  contents: write                # to commit state back
 
 jobs:
   build:
@@ -20,19 +21,39 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      # Self-healing guard: skip a SCHEDULED run if a video was already made today.
+      # Manual / repository_dispatch runs are never skipped. If the primary failed or was
+      # skipped, the marker isn't updated, so the backup schedule retries automatically.
+      - name: Skip if a video was already made today
+        id: guard
+        run: |
+          TODAY=$(date -u +%F)
+          LAST=$(cat state/last-run.txt 2>/dev/null || echo none)
+          if [ "$LAST" = "$TODAY" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "Already made a video today ($TODAY) — skipping this scheduled run."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.guard.outputs.skip != 'true'
         with:
           node-version: "20"
           cache: "npm"
       - name: Install ffmpeg + fonts
+        if: steps.guard.outputs.skip != 'true'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-liberation fonts-dejavu-core
       - name: Install uv (for free Edge-TTS narration)
+        if: steps.guard.outputs.skip != 'true'
         uses: astral-sh/setup-uv@v5
       - name: Install deps
+        if: steps.guard.outputs.skip != 'true'
         run: npm ci
       - name: Ensure Remotion browser
+        if: steps.guard.outputs.skip != 'true'
         run: npx remotion browser ensure
       - name: Build + upload daily video
+        if: steps.guard.outputs.skip != 'true'
         env:
           SCRIPT_WORDS: ${{ github.event.inputs.words || '2000' }}
           VOICE_PROVIDER: "edge"          # edge (free) | eleven (your clone, uses quota)
@@ -51,10 +72,12 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
         run: npx tsx src/scripts/make-daily.ts
-      - name: Persist used-topics (avoid repeats)
+      - name: Persist state (used-topics + run marker)
+        if: steps.guard.outputs.skip != 'true' && success()
         run: |
+          date -u +%F > state/last-run.txt
           git config user.name "infotainmentstu-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add state/used-topics.json || true
-          git commit -m "chore: update used-topics [skip ci]" || echo "nothing to commit"
+          git add state/used-topics.json state/last-run.txt || true
+          git commit -m "chore: update state [skip ci]" || echo "nothing to commit"
           git push || true

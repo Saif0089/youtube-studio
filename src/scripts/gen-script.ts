@@ -92,10 +92,10 @@ const imagePrompts: string[] = [];
 for (let i = 0; i < sentences.length; i += BATCH) {
   const batch = sentences.slice(i, i + BATCH);
   const numbered = batch.map((s, j) => `${j + 1}. ${s}`).join("\n");
-  const bp = `Below are numbered sentences from a psychology/science explainer narration. For EACH sentence, write ONE image prompt: a simple, colorful, minimalist whiteboard doodle that clearly ILLUSTRATES that specific sentence — a stick figure doing a clear action, or a simple object/scene that matches exactly what the sentence is saying. One clear visual idea each, distinct from the others. No readable text, letters, numbers, logos, or realistic faces. Do not describe art style.
-Return JSON {"prompts": [...]} with EXACTLY ${batch.length} prompts, in the same order as the sentences.
+  const bp = `Below are numbered lines (in order) from a psychology/science explainer narration. For EACH line, write ONE image prompt: a simple, colorful, minimalist whiteboard doodle that clearly ILLUSTRATES that specific line — a stick figure doing a clear action, or a simple object/scene that matches exactly what the line is saying. One clear visual idea each, distinct from the others. No readable text, letters, numbers, logos, or realistic faces. Do not describe art style.
+Return JSON {"prompts": [...]} with EXACTLY ${batch.length} prompts, in the same order as the lines.
 
-Sentences:
+Lines:
 ${numbered}`;
   const out = JSON.parse(await gemini(bp, promptSchema));
   let arr: string[] = Array.isArray(out.prompts) ? out.prompts.map((x: any) => String(x).trim()).filter(Boolean) : [];
