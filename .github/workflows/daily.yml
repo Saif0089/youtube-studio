@@ -2,7 +2,7 @@ name: Daily Video
 
 on:
   schedule:
-    - cron: "0 13 * * *"        # ~13:00 UTC daily (adjust to your audience)
+    - cron: "37 13 * * *"       # 13:37 UTC daily (off the top-of-hour; GitHub heavily delays/skips :00 jobs)
   workflow_dispatch:             # manual run button (test with a small word count)
     inputs:
       words:
