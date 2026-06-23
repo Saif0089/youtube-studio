@@ -14,11 +14,17 @@ const step = async (name: string, fn: () => Promise<void>) => { console.log(`\n=
 const voice = (process.env.VOICE_PROVIDER || "edge").toLowerCase();
 const imageProvider = (process.env.IMAGE_PROVIDER || "meshy").toLowerCase();
 const comp = process.env.REMOTION_COMP || "ExplainerVideo";
+const imgScripts: Record<string, string> = {
+  meshy: "src/scripts/gen-scenes-meshy.ts",
+  local: "src/scripts/gen-scenes-local.ts",
+  pollinations: "src/scripts/gen-scenes-pollinations.ts",
+  cloudflare: "src/scripts/gen-scenes-cf.ts",
+};
 
 await step("1/7 writing script", () => run("npx", ["tsx", "src/scripts/gen-script.ts"]));
 await step(`2/7 narrating (${voice})`, () => run("npx", ["tsx", voice === "eleven" ? "src/scripts/narrate-timed.ts" : "src/scripts/narrate-edge.ts"]));
 await step("3/7 captions + timing", () => run("npx", ["tsx", "src/scripts/prepare-render.ts"]));
-await step(`4/7 drawings (${imageProvider})`, () => run("npx", ["tsx", imageProvider === "meshy" ? "src/scripts/gen-scenes-meshy.ts" : "src/scripts/gen-scenes-cf.ts"]));
+await step(`4/7 drawings (${imageProvider})`, () => run("npx", ["tsx", imgScripts[imageProvider] ?? imgScripts.cloudflare]));
 await step("5/7 music", () => run("npx", ["tsx", "src/scripts/build-music.ts"]));
 await step("6/7 staging assets", async () => {
   await rm("public", { recursive: true, force: true }).catch(() => {});
