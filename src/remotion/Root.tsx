@@ -2,6 +2,7 @@ import React from "react";
 import { Composition } from "remotion";
 import { StoryVideo, StoryProps } from "./StoryVideo";
 import { ExplainerVideo, ExplainerProps } from "./ExplainerVideo";
+import { ShortVideo, ShortProps } from "./ShortVideo";
 import { Thumbnail } from "./Thumbnail";
 import defaultProps from "../../out/props.json";
 
@@ -29,6 +30,16 @@ export const RemotionRoot: React.FC = () => {
         durationInFrames={(defaultProps as unknown as StoryProps).durationInFrames}
         defaultProps={defaultProps as unknown as StoryProps}
         calculateMetadata={({ props }) => meta(props as unknown as StoryProps)}
+      />
+      <Composition
+        id="ShortVideo"
+        component={ShortVideo as React.FC<Record<string, unknown>>}
+        width={1080}
+        height={1920}
+        fps={30}
+        durationInFrames={(defaultProps as unknown as ShortProps).durationInFrames}
+        defaultProps={defaultProps as unknown as ShortProps}
+        calculateMetadata={({ props }) => meta(props as unknown as ShortProps)}
       />
       <Composition
         id="Thumbnail"

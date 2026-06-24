@@ -20,7 +20,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function genOne(prompt: string): Promise<Buffer | null> {
   const cr = await fetch("https://api.meshy.ai/openapi/v1/text-to-image", {
     method: "POST", headers: POST_H,
-    body: JSON.stringify({ ai_model: MODEL, prompt: prompt + STYLE, aspect_ratio: "16:9" }),
+    body: JSON.stringify({ ai_model: MODEL, prompt: prompt + STYLE, aspect_ratio: process.env.ORIENT === "portrait" ? "9:16" : "16:9" }),
   });
   if (!cr.ok) return null;
   const tid = ((await cr.json()) as any).result;

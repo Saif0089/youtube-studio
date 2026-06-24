@@ -9,6 +9,7 @@
     "mint-token": "tsx src/scripts/mint-refresh-token.ts",
     "smoke-upload": "tsx src/scripts/smoke-upload.ts",
     "make-video": "tsx src/scripts/make-video.ts",
+    "make-short": "tsx src/scripts/make-short.ts",
     "app": "tauri dev",
     "app:build": "tauri build",
     "tauri": "tauri"

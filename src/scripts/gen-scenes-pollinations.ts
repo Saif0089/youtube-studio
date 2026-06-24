@@ -10,8 +10,11 @@ const prompts: string[] = story.imagePrompts;
 await mkdir("out", { recursive: true });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const portrait = process.env.ORIENT === "portrait";
+const reqW = portrait ? 576 : 1024;
+const reqH = portrait ? 1024 : 576;
 async function gen(prompt: string, seed: number): Promise<Buffer | null> {
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + STYLE)}?width=1024&height=576&model=flux&nologo=true&seed=${seed}`;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + STYLE)}?width=${reqW}&height=${reqH}&model=flux&nologo=true&seed=${seed}`;
   try {
     const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!r.ok) return null;

@@ -72,6 +72,19 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
         run: npx tsx src/scripts/make-daily.ts
+      - name: Build + upload Short (vertical, free Pollinations)
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          VOICE_PROVIDER: "edge"
+          IMAGE_PROVIDER: "pollinations"   # free for Shorts; saves Meshy credits for the main video
+          EDGE_VOICE: "en-US-AndrewNeural"
+          PUBLISH_MODE: "approval"
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: npx tsx src/scripts/make-short.ts
       - name: Persist state (used-topics + run marker)
         if: steps.guard.outputs.skip != 'true' && success()
         run: |
