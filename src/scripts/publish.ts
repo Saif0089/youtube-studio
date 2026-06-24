@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { readFile, appendFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { loadConfig } from "../config.js";
 import { getAuthorizedClient } from "../youtube/auth.js";
 import { uploadVideo, type UploadOptions } from "../youtube/uploader.js";
@@ -15,6 +16,7 @@ const opts: UploadOptions = {
   tags: story.tags,
 };
 if (mode === "auto") opts.publishAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+if (existsSync("out/thumbnail.jpg")) opts.thumbnailPath = "out/thumbnail.jpg"; // custom thumbnail for higher CTR
 
 const id = await uploadVideo(getAuthorizedClient(loadConfig()), opts);
 const reviewUrl = `https://studio.youtube.com/video/${id}/edit`;

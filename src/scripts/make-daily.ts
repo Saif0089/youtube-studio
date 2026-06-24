@@ -37,6 +37,7 @@ await step("6. stage assets", async () => {
 });
 await step("7. render (Remotion)", () =>
   run("npx", ["remotion", "render", "src/remotion/index.ts", comp, "out/story.mp4", "--props=./out/props.json", "--concurrency=4", "--log=error"]));
+await step("7b. thumbnail", () => run("npx", ["remotion", "still", "src/remotion/index.ts", "Thumbnail", "out/thumbnail.jpg", "--props=./out/props.json"]));
 await step("8. publish (YouTube)", () => run("npx", ["tsx", "src/scripts/publish.ts"]));
 
 console.log("\n✅ daily video complete");

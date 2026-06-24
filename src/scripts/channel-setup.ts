@@ -7,9 +7,9 @@ import { getAuthorizedClient } from "../youtube/auth.js";
 const youtube = google.youtube({ version: "v3", auth: getAuthorizedClient(loadConfig()) });
 
 const description =
-  "InfotainmentStu explains the fascinating science of being human — why you think, feel, and behave the way you do. Clear, surprising psychology and science explainers, simply told.\n\nNew video every day. Subscribe and stay curious.";
+  "InfotainmentStu explains the psychology of money & behavior — why you spend, save, waste, and self-sabotage with money and success. Clear, surprising behavioral-psychology explainers, simply told.\n\nNew video every day. Subscribe and stay curious.";
 const keywords =
-  'psychology science "psychology facts" "human behavior" "the real reason" "why we" brain neuroscience "science explained" explainer educational facts learning';
+  'money psychology "psychology of money" "personal finance psychology" "behavioral economics" "money mindset" spending saving wealth "financial psychology" "the real reason" "why we spend"';
 
 // 1) get channel id + current branding
 const list = await youtube.channels.list({ part: ["id", "snippet", "brandingSettings"], mine: true } as any);

@@ -49,16 +49,16 @@ const planSchema = {
   },
   required: ["title", "topic", "description", "tags", "onScreenTitle", "sections"],
 };
-const planPrompt = `You plan videos for "InfotainmentStu", a YouTube channel of fascinating PSYCHOLOGY & SCIENCE explainers — "the real reason..." curiosity videos that explain why humans and the world work the way they do.
+const planPrompt = `You plan videos for "InfotainmentStu", a YouTube channel about the PSYCHOLOGY OF MONEY & BEHAVIOR — "the real reason..." curiosity videos explaining why people spend, save, waste, chase, and self-sabotage with money and success, grounded in behavioral psychology and economics.
 
 Plan ONE new video.
-- Pick a genuinely interesting, REAL psychology/science/human-behavior question grounded in well-established science. No invented studies, names, numbers, or quotes.
+- Pick a genuinely interesting, REAL question about money psychology, spending/saving behavior, wealth, success habits, or behavioral economics, grounded in well-established science. No invented studies, names, numbers, statistics, or quotes — keep specifics general and accurate. Examples: "the real reason you can't save money", "why we feel poor even when we earn more", "the psychology of impulse spending", "why money doesn't buy happiness".
 - Avoid these already-used topics: ${used.length ? used.join("; ") : "(none yet)"}.
 - "title": curiosity-driven YouTube title (<= 70 chars), ideally starting "The Real Reason..." or "Why...".
 - "onScreenTitle": punchy 2-4 word on-screen title.
-- "description": 2-3 sentences, then a blank line, then "InfotainmentStu — the science of being human, explained simply."
+- "description": 2-3 sentences, then a blank line, then "InfotainmentStu — the psychology of money & behavior, explained simply."
 - "tags": 8-12 relevant tags.
-- "sections": EXACTLY ${sections} sections that together tell a complete, building explanation (hook → context → the science → a surprising insight or two → satisfying reframe). Each has a "heading" and a 1-2 sentence "summary". In order, no overlap.
+- "sections": EXACTLY ${sections} sections that together tell a complete, building explanation (hook → context → the psychology → a surprising insight or two → satisfying reframe). Each has a "heading" and a 1-2 sentence "summary". In order, no overlap.
 Return JSON only.`;
 
 const plan = JSON.parse(await gemini(planPrompt, planSchema));
@@ -72,7 +72,7 @@ for (let s = 0; s < plan.sections.length; s++) {
   const role = first ? "This is the opening — start with a strong, relatable hook in the first two sentences."
     : last ? "This is the FINAL section — end with a satisfying, thought-provoking reframe (no 'in conclusion')." : "";
   const prevTail = parts.length ? parts[parts.length - 1].split(/\s+/).slice(-25).join(" ") : "";
-  const secPrompt = `You are writing the SPOKEN narration for a YouTube psychology/science explainer. Title: "${plan.title}". Topic: ${plan.topic}.
+  const secPrompt = `You are writing the SPOKEN narration for a YouTube money & behavior psychology explainer. Title: "${plan.title}". Topic: ${plan.topic}.
 Write ONLY the narration for this section: "${sec.heading}" — ${sec.summary}
 About ${wordsPerSection} words — write the full amount. ${role}
 Continue naturally; no headings, no stage directions, no "[music]", no markdown, no lists; conversational, second-person ("you"); accurate to real science (no invented studies/names/numbers/quotes).${prevTail ? ` The previous section ended: "...${prevTail}". Continue smoothly.` : ""}
@@ -92,7 +92,7 @@ const imagePrompts: string[] = [];
 for (let i = 0; i < sentences.length; i += BATCH) {
   const batch = sentences.slice(i, i + BATCH);
   const numbered = batch.map((s, j) => `${j + 1}. ${s}`).join("\n");
-  const bp = `Below are numbered lines (in order) from a psychology/science explainer narration. For EACH line, write ONE image prompt: a simple, colorful, minimalist whiteboard doodle that clearly ILLUSTRATES that specific line — a stick figure doing a clear action, or a simple object/scene that matches exactly what the line is saying. One clear visual idea each, distinct from the others. No readable text, letters, numbers, logos, or realistic faces. Do not describe art style.
+  const bp = `Below are numbered lines (in order) from a money & behavior psychology explainer narration. For EACH line, write ONE image prompt: a simple, colorful, minimalist whiteboard doodle that clearly ILLUSTRATES that specific line — a stick figure doing a clear action, or a simple object/scene that matches exactly what the line is saying. One clear visual idea each, distinct from the others. No readable text, letters, numbers, logos, or realistic faces. Do not describe art style.
 Return JSON {"prompts": [...]} with EXACTLY ${batch.length} prompts, in the same order as the lines.
 
 Lines:

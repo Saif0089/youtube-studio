@@ -37,4 +37,5 @@ await step("6/7 staging assets", async () => {
 await step("7/7 rendering video", () =>
   run("npx", ["remotion", "render", "src/remotion/index.ts", comp, "out/story.mp4", "--props=./out/props.json", "--concurrency=4", "--log=error"]));
 
+await step("thumbnail", () => run("npx", ["remotion", "still", "src/remotion/index.ts", "Thumbnail", "out/thumbnail.jpg", "--props=./out/props.json"]));
 console.log("\n✅ video ready: out/story.mp4");
