@@ -1,25 +1,9 @@
 import "dotenv/config";
 import { writeFile, mkdir } from "node:fs/promises";
 import { splitForVisuals } from "../lib/sentences.js";
+import { generate as gemini } from "../lib/llm.js";
 
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) { console.error("GEMINI_API_KEY missing"); process.exit(1); }
-const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
 const targetWords = Number(process.env.SHORT_WORDS || 120);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function gemini(prompt: string, schema?: any): Promise<string> {
-  const generationConfig: any = { temperature: 1.0, maxOutputTokens: 4096 };
-  if (schema) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = schema; }
-  const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig });
-  for (let attempt = 1; ; attempt++) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
-    if (res.ok) { const data: any = await res.json(); return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? ""; }
-    const errTxt = (await res.text()).slice(0, 300);
-    if ([429, 500, 502, 503, 504].includes(res.status) && attempt <= 5) { await sleep(5000 * attempt); continue; }
-    console.error(`HTTP ${res.status}: ${errTxt}`); process.exit(1);
-  }
-}
 
 await mkdir("out", { recursive: true });
 

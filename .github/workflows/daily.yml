@@ -49,6 +49,9 @@ jobs:
       - name: Install deps
         if: steps.guard.outputs.skip != 'true'
         run: npm ci
+      - name: Install Claude Code (script engine, uses your Max subscription)
+        if: steps.guard.outputs.skip != 'true'
+        run: npm i -g @anthropic-ai/claude-code
       - name: Ensure Remotion browser
         if: steps.guard.outputs.skip != 'true'
         run: npx remotion browser ensure
@@ -56,6 +59,8 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         env:
           SCRIPT_WORDS: ${{ github.event.inputs.words || '2000' }}
+          SCRIPT_PROVIDER: "claude"       # claude (your Max subscription) | gemini (free HTTP)
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"          # edge (free) | eleven (your clone, uses quota)
           IMAGE_PROVIDER: "meshy"         # meshy (uses credits, auto-falls back to free Pollinations) | cloudflare
           EDGE_VOICE: "en-US-AndrewNeural"
@@ -75,6 +80,8 @@ jobs:
       - name: Build + upload Short (vertical, free Pollinations)
         if: steps.guard.outputs.skip != 'true'
         env:
+          SCRIPT_PROVIDER: "claude"
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"
           IMAGE_PROVIDER: "pollinations"   # free for Shorts; saves Meshy credits for the main video
           EDGE_VOICE: "en-US-AndrewNeural"
@@ -94,3 +101,15 @@ jobs:
           git add state/used-topics.json state/last-run.txt || true
           git commit -m "chore: update state [skip ci]" || echo "nothing to commit"
           git push || true
+      # Ping Discord on ANY failure in this job (script gen, narration, render, upload, etc.)
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then echo "no webhook set"; exit 0; fi
+          MSG="🔴 **Daily video run FAILED** (${{ github.event_name }}). The video/short was not produced.\\nCheck the logs: $RUN_URL"
+          curl -sf -H "Content-Type: application/json" \
+            -d "{\"content\": \"$MSG\"}" \
+            "$DISCORD_WEBHOOK" || echo "discord notify failed"
