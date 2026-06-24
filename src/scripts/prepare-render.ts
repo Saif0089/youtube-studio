@@ -49,14 +49,14 @@ const wt = (i: number) => words[Math.max(0, Math.min(words.length - 1, i))].star
 let segments: { start: number; end: number }[] = [];
 
 if (sentences.length === n) {
-  const total = sentences.reduce((a, s) => a + countWords(s), 0);
-  const ratio = words.length / Math.max(1, total);
-  const cumStart: number[] = [];
-  let cum = 0;
-  for (const s of sentences) { cumStart.push(cum); cum += countWords(s); }
+  // walk the spoken-word stream, advancing by each line's word count, so every image
+  // is timed to the EXACT moment its line's first word is spoken (no proportional drift)
+  const startIdx: number[] = [];
+  let wi = 0;
+  for (const s of sentences) { startIdx.push(Math.min(wi, words.length - 1)); wi += countWords(s); }
   for (let k = 0; k < n; k++) {
-    const start = wt(Math.round(cumStart[k] * ratio));
-    const end = k < n - 1 ? wt(Math.round(cumStart[k + 1] * ratio)) : narrationDur;
+    const start = words[startIdx[k]].start;
+    const end = k < n - 1 ? words[startIdx[k + 1]].start : narrationDur;
     segments.push({ start, end });
   }
 } else {

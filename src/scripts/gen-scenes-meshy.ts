@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { normalizeImage } from "../lib/normalize-image.js";
 
 const key = process.env.MESHY_API_KEY;
 if (!key) { console.error("MESHY_API_KEY missing"); process.exit(1); }
@@ -38,7 +39,7 @@ async function genOne(prompt: string): Promise<Buffer | null> {
 
 // free, no-key, no-cap fallback for when Meshy credits run out
 async function pollinations(prompt: string, seed: number): Promise<Buffer | null> {
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + STYLE)}?width=1280&height=720&model=flux&nologo=true&seed=${seed}`;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + STYLE)}?width=1024&height=576&model=flux&nologo=true&seed=${seed}`;
   try {
     const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!res.ok) return null;
@@ -55,9 +56,14 @@ async function worker() {
     const i = next++;
     if (i >= prompts.length) break;
     let buf: Buffer | null = null;
+    let fromFallback = false;
     for (let a = 0; a < 3 && !buf; a++) { buf = await genOne(prompts[i]); if (!buf) await sleep(2000); }
-    if (!buf) buf = await pollinations(prompts[i], i + 1); // Meshy out of credits -> free fallback
-    if (buf) { await writeFile(`out/scene-${i + 1}.jpg`, buf); done[i] = true; }
+    if (!buf) { buf = await pollinations(prompts[i], i + 1); fromFallback = true; } // Meshy out of credits -> free fallback
+    if (buf) {
+      if (fromFallback) await normalizeImage(buf, `out/scene-${i + 1}.jpg`); // Pollinations caps at 1024 -> normalize to 1280x720
+      else await writeFile(`out/scene-${i + 1}.jpg`, buf);
+      done[i] = true;
+    }
     completed++;
     if (completed % 20 === 0) console.log(`  …${completed}/${prompts.length} drawings`);
   }

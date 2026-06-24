@@ -59,9 +59,9 @@ export const ExplainerVideo: React.FC<ExplainerProps> = (props) => {
       {props.images.map((src, i) => {
         const seg = segs[i];
         const start = Math.round(seg.start * fps);
-        const from = i === 0 ? 0 : start - xfade;
+        const from = i === 0 ? 0 : start;        // image appears AT its line's start (no pre-roll)
         const isLast = i === n - 1;
-        const end = isLast ? props.durationInFrames : Math.round(seg.end * fps) + xfade;
+        const end = isLast ? props.durationInFrames : Math.round(seg.end * fps) + xfade; // hold a touch past for crossfade with the next
         const dur = Math.max(1, end - from);
         return (
           <Sequence key={i} from={Math.max(0, from)} durationInFrames={dur}>
