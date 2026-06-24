@@ -26,7 +26,11 @@ const DIM = "#c4c4bd";
 const PopImage: React.FC<{ src: string; dur: number }> = ({ src, dur }) => {
   const f = useCurrentFrame();
   const scale = interpolate(f, [0, dur], [1.0, 1.07], { extrapolateRight: "clamp", easing: Easing.inOut(Easing.ease) });
-  const opacity = interpolate(f, [0, 7, dur - 7, dur], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  // clamp the fade so [0, fade, dur-fade, dur] is ALWAYS strictly increasing (short segments crashed Remotion)
+  const fade = Math.min(7, Math.floor(dur / 3));
+  const opacity = fade >= 1 && dur - fade > fade
+    ? interpolate(f, [0, fade, dur - fade, dur], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
+    : 1;
   return (
     <AbsoluteFill style={{ opacity }}>
       <Img src={staticFile(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />

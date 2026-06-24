@@ -62,7 +62,7 @@ jobs:
           SCRIPT_PROVIDER: "claude"       # claude (your Max subscription) | gemini (free HTTP)
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"          # edge (free) | eleven (your clone, uses quota)
-          IMAGE_PROVIDER: "meshy"         # meshy (uses credits, auto-falls back to free Pollinations) | cloudflare
+          IMAGE_PROVIDER: "pollinations"  # FREE (Meshy credits exhausted). Switch back to "meshy" if you top up credits.
           EDGE_VOICE: "en-US-AndrewNeural"
           CF_STEPS: "4"                    # FLUX steps for the doodle line-art
           PUBLISH_MODE: "approval"   # upload PRIVATE for review; set to "auto" to schedule public
