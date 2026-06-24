@@ -32,7 +32,15 @@ export async function uploadVideo(auth: OAuth2Client, opts: UploadOptions): Prom
   if (!videoId) throw new Error("Upload returned no video id");
 
   if (opts.thumbnailPath) {
-    await youtube.thumbnails.set({ videoId, media: { body: createReadStream(opts.thumbnailPath) as any } });
+    // Best-effort: custom thumbnails require a phone-verified channel. If that's not set up,
+    // YouTube returns 403 — don't let it kill the upload (the video is already live & private).
+    try {
+      await youtube.thumbnails.set({ videoId, media: { body: createReadStream(opts.thumbnailPath) as any } });
+    } catch (err: any) {
+      const msg = err?.errors?.[0]?.message || err?.message || String(err);
+      console.warn(`⚠️  Custom thumbnail not set (video still uploaded fine): ${msg}`);
+      console.warn("    Verify your channel at https://www.youtube.com/verify to enable custom thumbnails.");
+    }
   }
   return videoId;
 }
