@@ -14,12 +14,25 @@ async function discordPing(content: string): Promise<void> {
   }
 }
 
+// Extract the FIRST balanced JSON object — robust to any preamble or trailing prose
+// the model may add around it (the cause of the "non-whitespace after JSON" crash).
 function stripJson(s: string): string {
   const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) return fence[1].trim();
-  const i = s.indexOf("{");
-  const j = s.lastIndexOf("}");
-  return i >= 0 && j > i ? s.slice(i, j + 1) : s.trim();
+  const body = fence ? fence[1] : s;
+  const start = body.indexOf("{");
+  if (start < 0) return body.trim();
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < body.length; i++) {
+    const c = body[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return body.slice(start, i + 1);
+  }
+  return body.slice(start).trim();
 }
 
 // ---- Claude Code (uses your Max subscription via CLAUDE_CODE_OAUTH_TOKEN, or local login) ----
@@ -45,7 +58,12 @@ async function claudeGenerate(prompt: string, json: boolean): Promise<string> {
     : prompt + "\n\nDo not use any tools. Respond with only the requested text.";
   for (let attempt = 1; attempt <= 4; attempt++) {
     const r = await claudeOnce(p);
-    if (r.ok) return json ? stripJson(r.text) : r.text.trim();
+    if (r.ok) {
+      if (!json) return r.text.trim();
+      const cleaned = stripJson(r.text);
+      try { JSON.parse(cleaned); return cleaned; } // validate before handing back
+      catch { console.log(`Claude returned unparseable JSON (attempt ${attempt}) — retrying…`); await sleep(2000); continue; }
+    }
     if (r.auth) {
       await discordPing(
         "⚠️ **Claude Code needs re-authentication** — today's video/short can't generate its script until the token is refreshed.\n" +
