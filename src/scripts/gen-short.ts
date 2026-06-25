@@ -4,12 +4,13 @@ import { splitForVisuals } from "../lib/sentences.js";
 import { generate as gemini } from "../lib/llm.js";
 
 const targetWords = Number(process.env.SHORT_WORDS || 120);
+const topic = process.env.SHORT_TOPIC?.trim(); // optional: focus the short on a specific topic (e.g. a teaser of a long video)
 
 await mkdir("out", { recursive: true });
 
 const planSchema = { type: "object", properties: { title: { type: "string" }, onScreenTitle: { type: "string" }, description: { type: "string" }, tags: { type: "array", items: { type: "string" } }, script: { type: "string" } }, required: ["title", "onScreenTitle", "description", "tags", "script"] };
 const planPrompt = `Write a punchy YouTube SHORT (~${targetWords} words, ~40-50 seconds read aloud) about the PSYCHOLOGY OF MONEY & BEHAVIOR.
-- A self-contained, surprising money-psychology insight with a STRONG hook in the first sentence (a question or bold claim that stops the scroll).
+${topic ? `- THIS SHORT MUST BE ABOUT: ${topic}. Make it a tight, self-contained teaser of exactly this idea.\n` : ""}- A self-contained, surprising money-psychology insight with a STRONG hook in the first sentence (a question or bold claim that stops the scroll).
 - Spoken narration ONLY, second-person ("you"), punchy and conversational, accurate to real behavioral science (no invented studies, numbers, or quotes).
 - End with a short call to action: tell viewers the full breakdown is on the channel and to subscribe.
 - "title": punchy YouTube title <= 80 chars, ending with " #shorts".

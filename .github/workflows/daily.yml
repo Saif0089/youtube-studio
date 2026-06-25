@@ -7,8 +7,8 @@ on:
   workflow_dispatch:             # manual run button (always runs)
     inputs:
       words:
-        description: "Script word count"
-        default: "2000"
+        description: "Long-video narration word count (~50 words per doodle scene)"
+        default: "600"
   repository_dispatch:           # external trigger (e.g. cron-job.org) via the GitHub API; always runs
     types: [build-video]
 
@@ -55,43 +55,36 @@ jobs:
       - name: Ensure Remotion browser
         if: steps.guard.outputs.skip != 'true'
         run: npx remotion browser ensure
-      - name: Build + upload daily video
+      - name: Build + upload daily doodle video
         if: steps.guard.outputs.skip != 'true'
         env:
-          SCRIPT_WORDS: ${{ github.event.inputs.words || '2000' }}
-          SCRIPT_PROVIDER: "claude"       # claude (your Max subscription) | gemini (free HTTP)
+          SCRIPT_PROVIDER: "claude"       # Claude Code (your Max subscription) writes the script + draws every doodle SVG
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          VOICE_PROVIDER: "edge"          # edge (free) | eleven (your clone, uses quota)
-          IMAGE_PROVIDER: "pollinations"  # FREE (Meshy credits exhausted). Switch back to "meshy" if you top up credits.
+          VOICE_PROVIDER: "edge"          # free Edge-TTS
           EDGE_VOICE: "en-US-AndrewNeural"
-          CF_STEPS: "4"                    # FLUX steps for the doodle line-art
-          PUBLISH_MODE: "approval"   # upload PRIVATE for review; set to "auto" to schedule public
+          DOODLE_WORDS: ${{ github.event.inputs.words || '600' }}   # ~5 min; bump for longer
+          DOODLE_SCENES: "12"             # one animated doodle per scene (~50 words each)
+          PUBLISH_MODE: "approval"        # upload PRIVATE for review; set to "auto" to schedule public
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
-        run: npx tsx src/scripts/make-daily.ts
-      - name: Build + upload Short (vertical, free Pollinations)
+        run: npx tsx src/scripts/make-daily-doodle.ts
+      - name: Build + upload doodle Short (vertical)
         if: steps.guard.outputs.skip != 'true'
         env:
           SCRIPT_PROVIDER: "claude"
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"
-          IMAGE_PROVIDER: "pollinations"   # free for Shorts; saves Meshy credits for the main video
           EDGE_VOICE: "en-US-AndrewNeural"
           PUBLISH_MODE: "approval"
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: npx tsx src/scripts/make-short.ts
+        run: |
+          npx tsx src/scripts/make-doodle-short.ts
+          npx tsx src/scripts/publish-short.ts
       - name: Persist state (used-topics + run marker)
         if: steps.guard.outputs.skip != 'true' && success()
         run: |

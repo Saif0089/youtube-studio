@@ -1,9 +1,9 @@
 import { readFile, mkdir, copyFile } from "node:fs/promises";
 import { normalizeImage } from "../lib/normalize-image.js";
 
-// Free, keyless, no-cap image generation via Pollinations.ai (FLUX). Slower + slightly softer than Meshy/Cloudflare.
-const STYLE =
-  ", colorful minimalist whiteboard explainer cartoon, hand-drawn thick black marker outlines with bright flat color fills (cheerful yellow, red, blue, green, orange), include a simple light flat background or setting that fits the scene when it helps, soft pastel background colors, clean and uncluttered, no text, no letters, no numbers, no shading";
+// Free, keyless image generation via Pollinations.ai (FLUX schnell). Keep the style string SHORT —
+// a bloated style string fights the model and wrecks figure proportions. enhance=true does the heavy lifting.
+const STYLE = ", simple clean colorful cartoon doodle illustration, expressive, soft flat background, no text";
 
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
 const prompts: string[] = story.imagePrompts;
@@ -14,7 +14,7 @@ const portrait = process.env.ORIENT === "portrait";
 const reqW = portrait ? 576 : 1024;
 const reqH = portrait ? 1024 : 576;
 async function gen(prompt: string, seed: number): Promise<Buffer | null> {
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + STYLE)}?width=${reqW}&height=${reqH}&model=flux&nologo=true&seed=${seed}`;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + STYLE)}?width=${reqW}&height=${reqH}&model=flux&enhance=true&nologo=true&seed=${seed}`;
   try {
     const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!r.ok) return null;
