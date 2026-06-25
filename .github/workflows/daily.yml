@@ -35,6 +35,15 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Notify Discord on start
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then echo "no webhook set"; exit 0; fi
+          MSG="🟢 **Daily doodle pipeline started** (${{ github.event_name }}). Building today's video + Short — this takes ~1 hour.\\nLogs: $RUN_URL"
+          curl -sf -H "Content-Type: application/json" -d "{\"content\": \"$MSG\"}" "$DISCORD_WEBHOOK" || echo "discord notify failed"
       - uses: actions/setup-node@v4
         if: steps.guard.outputs.skip != 'true'
         with:
