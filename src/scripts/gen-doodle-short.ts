@@ -53,15 +53,21 @@ ANIMATION — add a class to elements that should move:
 
 Output ONLY the raw <svg>...</svg> markup. No markdown, no explanation.`;
 
-const scenes: { narration: string; visual: string; svg: string }[] = [];
-for (let i = 0; i < plan.scenes.length; i++) {
-  const sc = plan.scenes[i];
-  let svg = (await generate(svgPrompt(sc.visual))).trim();
-  const m = svg.match(/<svg[\s\S]*<\/svg>/i);
-  if (m) svg = m[0];
-  scenes.push({ narration: sc.narration, visual: sc.visual, svg });
-  console.log(`  scene ${i + 1}/${plan.scenes.length}: ${svg.length} bytes — ${sc.visual.slice(0, 50)}`);
+// Generate scene SVGs concurrently (pool of workers) to cut Claude-call wall-clock.
+const CONC = Number(process.env.DOODLE_CONCURRENCY || 4);
+const scenes: { narration: string; visual: string; svg: string }[] = new Array(plan.scenes.length);
+let nextScene = 0;
+async function svgWorker() {
+  for (let i = nextScene++; i < plan.scenes.length; i = nextScene++) {
+    const sc = plan.scenes[i];
+    let svg = (await generate(svgPrompt(sc.visual))).trim();
+    const m = svg.match(/<svg[\s\S]*<\/svg>/i);
+    if (m) svg = m[0];
+    scenes[i] = { narration: sc.narration, visual: sc.visual, svg };
+    console.log(`  scene ${i + 1}/${plan.scenes.length}: ${svg.length} bytes — ${sc.visual.slice(0, 50)}`);
+  }
 }
+await Promise.all(Array.from({ length: Math.min(CONC, plan.scenes.length) }, () => svgWorker()));
 
 const script = scenes.map((s) => s.narration).join(" ");
 await writeFile(
