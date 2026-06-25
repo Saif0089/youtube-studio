@@ -52,22 +52,17 @@ ANIMATION — add a class to elements that should move:
 
 Output ONLY the raw <svg>...</svg> markup. No markdown, no explanation.`;
 
-// Generate scene SVGs CONCURRENTLY (a pool of workers) — Claude CLI calls dominate the
-// runtime, so this cuts wall-clock from sum-of-calls to ~ceil(n/CONC) batches.
-const CONC = Number(process.env.DOODLE_CONCURRENCY || 4);
-const scenes: { narration: string; visual: string; svg: string }[] = new Array(plan.scenes.length);
-let nextScene = 0;
-async function svgWorker() {
-  for (let i = nextScene++; i < plan.scenes.length; i = nextScene++) {
-    const sc = plan.scenes[i];
-    let svg = (await generate(svgPrompt(sc.visual))).trim();
-    const m = svg.match(/<svg[\s\S]*<\/svg>/i);
-    if (m) svg = m[0];
-    scenes[i] = { narration: sc.narration, visual: sc.visual, svg };
-    console.log(`  scene ${i + 1}/${plan.scenes.length}: ${svg.length} bytes — ${sc.visual.slice(0, 50)}`);
-  }
+// Sequential SVG generation — concurrent `claude` CLI processes contend/hang on CI, so
+// generate one at a time. Keep the scene count modest so the (slower) render fits the timeout.
+const scenes: { narration: string; visual: string; svg: string }[] = [];
+for (let i = 0; i < plan.scenes.length; i++) {
+  const sc = plan.scenes[i];
+  let svg = (await generate(svgPrompt(sc.visual))).trim();
+  const m = svg.match(/<svg[\s\S]*<\/svg>/i);
+  if (m) svg = m[0];
+  scenes.push({ narration: sc.narration, visual: sc.visual, svg });
+  console.log(`  scene ${i + 1}/${plan.scenes.length}: ${svg.length} bytes — ${sc.visual.slice(0, 50)}`);
 }
-await Promise.all(Array.from({ length: Math.min(CONC, plan.scenes.length) }, () => svgWorker()));
 
 const script = scenes.map((s) => s.narration).join(" ");
 await writeFile("out/story.json", JSON.stringify({ title: plan.title, topic: "money psychology", description: plan.description, tags: plan.tags, onScreenTitle: plan.onScreenTitle, script }, null, 1));

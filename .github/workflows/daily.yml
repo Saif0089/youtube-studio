@@ -7,8 +7,8 @@ on:
   workflow_dispatch:             # manual run button (always runs)
     inputs:
       words:
-        description: "Long-video narration word count (~60 words per doodle scene)"
-        default: "500"
+        description: "Long-video narration word count (~55 words per doodle scene)"
+        default: "330"
   repository_dispatch:           # external trigger (e.g. cron-job.org) via the GitHub API; always runs
     types: [build-video]
 
@@ -62,9 +62,8 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"          # free Edge-TTS
           EDGE_VOICE: "en-US-AndrewNeural"
-          DOODLE_WORDS: ${{ github.event.inputs.words || '500' }}   # ~3.5 min; bump for longer
-          DOODLE_SCENES: "8"              # one animated doodle per scene; generated 4-at-a-time
-          DOODLE_CONCURRENCY: "4"         # parallel Claude SVG generations
+          DOODLE_WORDS: ${{ github.event.inputs.words || '330' }}   # ~2.2 min; render-bound on CI, scale up cautiously
+          DOODLE_SCENES: "6"              # one animated doodle per scene (sequential SVG gen)
           PUBLISH_MODE: "approval"        # upload PRIVATE for review; set to "auto" to schedule public
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}

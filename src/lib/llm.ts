@@ -36,18 +36,19 @@ function stripJson(s: string): string {
 }
 
 // ---- Claude Code (uses your Max subscription via CLAUDE_CODE_OAUTH_TOKEN, or local login) ----
-function claudeOnce(prompt: string): Promise<{ ok: boolean; text: string; auth: boolean }> {
+function claudeOnce(prompt: string): Promise<{ ok: boolean; text: string; auth: boolean; err: string }> {
   return new Promise((resolve) => {
-    const child = spawn("claude", ["-p", prompt, "--output-format", "text"], { env: process.env });
+    // stdin = ignore so the CLI never waits on stdin (it hangs on headless/CI otherwise)
+    const child = spawn("claude", ["-p", prompt, "--output-format", "text"], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     let err = "";
     child.stdout.on("data", (d) => (out += d.toString()));
     child.stderr.on("data", (d) => (err += d.toString()));
-    child.on("error", () => resolve({ ok: false, text: "", auth: false }));
+    child.on("error", (e) => resolve({ ok: false, text: "", auth: false, err: String(e) }));
     child.on("close", (code) => {
       const blob = (out + " " + err).toLowerCase();
       const auth = /unauthor|authenticat|invalid api key|invalid.*token|token.*(expired|invalid)|expired|oauth|\b401\b|please run|not logged in|\/login/.test(blob);
-      resolve({ ok: code === 0 && out.trim().length > 0, text: out, auth });
+      resolve({ ok: code === 0 && out.trim().length > 0, text: out, auth, err: (err || out || `exit ${code}`).slice(0, 400) });
     });
   });
 }
@@ -72,7 +73,7 @@ async function claudeGenerate(prompt: string, json: boolean): Promise<string> {
       console.error("Claude Code auth failure — pinged Discord to re-authenticate.");
       process.exit(2);
     }
-    console.log(`Claude Code attempt ${attempt} failed (transient) — retrying…`);
+    console.log(`Claude Code attempt ${attempt} failed (transient) — retrying… [${r.err.replace(/\s+/g, " ").slice(0, 200)}]`);
     await sleep(5000 * attempt);
   }
   await discordPing("⚠️ Claude Code script generation failed repeatedly (non-auth). Check the GitHub Actions logs.");
