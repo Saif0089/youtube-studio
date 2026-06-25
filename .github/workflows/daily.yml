@@ -15,6 +15,12 @@ on:
 permissions:
   contents: write                # to commit state back
 
+# Never run two daily jobs at once. A second run (e.g. a scheduled one firing while a manual
+# run is still going) waits, then the "already made a video today" guard skips it — no duplicates.
+concurrency:
+  group: daily-video
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
