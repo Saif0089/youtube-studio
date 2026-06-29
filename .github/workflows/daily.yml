@@ -7,8 +7,8 @@ on:
   workflow_dispatch:             # manual run button (always runs)
     inputs:
       words:
-        description: "Long-video narration word count (~55 words per doodle scene)"
-        default: "330"
+        description: "Long-video narration word count (~150 words/min; 1350 ≈ 9 min)"
+        default: "1350"
   repository_dispatch:           # external trigger (e.g. cron-job.org) via the GitHub API; always runs
     types: [build-video]
 
@@ -70,35 +70,41 @@ jobs:
       - name: Ensure Remotion browser
         if: steps.guard.outputs.skip != 'true'
         run: npx remotion browser ensure
-      - name: Build + upload daily doodle video
+      - name: Build + upload daily video (stock backgrounds + doodle host)
         if: steps.guard.outputs.skip != 'true'
         env:
-          SCRIPT_PROVIDER: "claude"       # Claude Code (your Max subscription) writes the script + draws every doodle SVG
+          SCRIPT_PROVIDER: "claude"       # Claude Code (your Max subscription) writes the script + draws the doodle host SVGs
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"          # free Edge-TTS
           EDGE_VOICE: "en-US-AndrewNeural"
-          DOODLE_WORDS: ${{ github.event.inputs.words || '330' }}   # ~2.2 min; render-bound on CI, scale up cautiously
-          DOODLE_SCENES: "6"              # one animated doodle per scene (sequential SVG gen)
+          DOODLE_WORDS: ${{ github.event.inputs.words || '1350' }}  # ~9 min; per-sentence stock photos keep render lean
+          DOODLE_SCENES: "16"             # pool of rigged doodle hosts (cycled per sentence for variety)
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}             # free stock photos (primary)
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}           # free stock photos (fallback)
+          RENDER_CONCURRENCY: "2"         # free runner has ~2 cores
           PUBLISH_MODE: "approval"        # upload PRIVATE for review; set to "auto" to schedule public
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: npx tsx src/scripts/make-daily-doodle.ts
-      - name: Build + upload doodle Short (vertical)
+        run: npx tsx src/scripts/make-daily.ts
+      - name: Build + upload Short (vertical, stock + doodle host)
         if: steps.guard.outputs.skip != 'true'
         env:
           SCRIPT_PROVIDER: "claude"
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"
           EDGE_VOICE: "en-US-AndrewNeural"
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          RENDER_CONCURRENCY: "2"
           PUBLISH_MODE: "approval"
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          npx tsx src/scripts/make-doodle-short.ts
+          npx tsx src/scripts/make-short-host.ts
           npx tsx src/scripts/publish-short.ts
       - name: Persist state (used-topics + run marker)
         if: steps.guard.outputs.skip != 'true' && success()

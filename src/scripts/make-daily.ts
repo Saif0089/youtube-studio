@@ -1,43 +1,35 @@
 import { spawn } from "node:child_process";
-import { readFile, copyFile, mkdir } from "node:fs/promises";
+import { readFile, copyFile, mkdir, rm } from "node:fs/promises";
 
-const run = (cmd: string, args: string[]) =>
-  new Promise<void>((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: "inherit" });
-    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(" ")} -> exit ${code}`))));
+// Daily long video: script + transparent doodle host scenes (Claude) -> per-sentence stock
+// backgrounds (Pexels->Pixabay) -> edge-tts -> HostVideo render -> thumbnail -> publish.
+const run = (cmd: string, args: string[], env?: Record<string, string>) =>
+  new Promise<void>((res, rej) => {
+    const p = spawn(cmd, args, { stdio: "inherit", env: { ...process.env, ...(env || {}) } });
+    p.on("close", (c) => (c === 0 ? res() : rej(new Error(`${cmd} ${args.join(" ")} -> exit ${c}`))));
   });
+const step = async (name: string, fn: () => Promise<void>) => { console.log(`\n=== ${name} ===`); await fn(); };
+const LAND = { ORIENT: "landscape" };
+const conc = process.env.RENDER_CONCURRENCY || "4";
 
-const step = async (name: string, fn: () => Promise<void>) => {
-  console.log(`\n=== ${name} ===`);
-  await fn();
-};
-
-const voice = (process.env.VOICE_PROVIDER || "edge").toLowerCase(); // edge (free) | eleven (clone)
-const imageProvider = (process.env.IMAGE_PROVIDER || "cloudflare").toLowerCase(); // cloudflare | meshy (falls back to pollinations)
-const comp = process.env.REMOTION_COMP || "ExplainerVideo";
-const imgScripts: Record<string, string> = {
-  meshy: "src/scripts/gen-scenes-meshy.ts",
-  local: "src/scripts/gen-scenes-local.ts",
-  pollinations: "src/scripts/gen-scenes-pollinations.ts",
-  cloudflare: "src/scripts/gen-scenes-cf.ts",
-};
-
-await step("1. script (Gemini)", () => run("npx", ["tsx", "src/scripts/gen-script.ts"]));
-await step(`2. narrate (${voice})`, () =>
-  run("npx", ["tsx", voice === "eleven" ? "src/scripts/narrate-timed.ts" : "src/scripts/narrate-edge.ts"]));
-await step("3. captions + props", () => run("npx", ["tsx", "src/scripts/prepare-render.ts"]));
-await step(`4. images (${imageProvider})`, () => run("npx", ["tsx", imgScripts[imageProvider] ?? imgScripts.cloudflare]));
-await step("5. music", () => run("npx", ["tsx", "src/scripts/build-music.ts"]));
-await step("6. stage assets", async () => {
+await step("1/7 script + doodle host scenes (Claude)", () => run("npx", ["tsx", "src/scripts/gen-doodle-long.ts"]));
+await step("2/7 per-sentence stock backgrounds", () => run("npx", ["tsx", "src/scripts/gen-bg-stock.ts"], LAND));
+await step("3/7 narrate (edge-tts)", () => run("npx", ["tsx", "src/scripts/narrate-edge.ts"]));
+await step("4/7 props (timing + captions)", () => run("npx", ["tsx", "src/scripts/prepare-host.ts"], LAND));
+await step("5/7 stage assets", async () => {
+  await rm("public", { recursive: true, force: true }).catch(() => {});
   await mkdir("public", { recursive: true });
   const props = JSON.parse(await readFile("out/props.json", "utf8"));
   for (const img of props.images) await copyFile(`out/${img}`, `public/${img}`);
   await copyFile("out/narration.mp3", "public/narration.mp3");
-  await copyFile("out/music.wav", "public/music.wav");
 });
-await step("7. render (Remotion)", () =>
-  run("npx", ["remotion", "render", "src/remotion/index.ts", comp, "out/story.mp4", "--props=./out/props.json", "--concurrency=4", "--log=error"]));
-await step("7b. thumbnail", () => run("npx", ["remotion", "still", "src/remotion/index.ts", "Thumbnail", "out/thumbnail.jpg", "--props=./out/props.json"]));
-await step("8. publish (YouTube)", () => run("npx", ["tsx", "src/scripts/publish.ts"]));
+await step("6/7 render -> out/story.mp4", () =>
+  run("npx", ["remotion", "render", "src/remotion/index.ts", "HostVideo", "out/story.mp4", "--props=./out/props.json", `--concurrency=${conc}`, "--log=error"]));
+await step("7/7 thumbnail", () =>
+  run("npx", ["remotion", "still", "src/remotion/index.ts", "Thumbnail", "out/thumbnail.jpg", "--props=./out/props.json", "--log=error"])
+    .catch((e) => console.error("thumbnail failed (non-fatal):", e)));
 
-console.log("\n✅ daily video complete");
+if (process.env.NO_PUBLISH) console.log("\nNO_PUBLISH set — skipping upload.");
+else await step("publish (YouTube)", () => run("npx", ["tsx", "src/scripts/publish.ts"]));
+
+console.log("\n✅ daily host video complete");

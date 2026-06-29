@@ -2,6 +2,7 @@ import React from "react";
 import { Composition } from "remotion";
 import { StoryVideo, StoryProps } from "./StoryVideo";
 import { ExplainerVideo, ExplainerProps } from "./ExplainerVideo";
+import { HostVideo, HostProps } from "./HostVideo";
 import { ShortVideo, ShortProps } from "./ShortVideo";
 import { Thumbnail } from "./Thumbnail";
 import { DoodleVideo, DoodleProps } from "./DoodleVideo";
@@ -22,6 +23,26 @@ export const RemotionRoot: React.FC = () => {
         durationInFrames={(defaultProps as unknown as ExplainerProps).durationInFrames}
         defaultProps={defaultProps as unknown as ExplainerProps}
         calculateMetadata={({ props }) => meta(props as unknown as ExplainerProps)}
+      />
+      <Composition
+        id="HostVideo"
+        component={HostVideo as React.FC<Record<string, unknown>>}
+        width={1920}
+        height={1080}
+        fps={30}
+        durationInFrames={(defaultProps as unknown as HostProps).durationInFrames}
+        defaultProps={defaultProps as unknown as HostProps}
+        calculateMetadata={({ props }) => meta(props as unknown as HostProps)}
+      />
+      <Composition
+        id="HostShort"
+        component={HostVideo as React.FC<Record<string, unknown>>}
+        width={1080}
+        height={1920}
+        fps={30}
+        durationInFrames={(defaultProps as unknown as HostProps).durationInFrames}
+        defaultProps={defaultProps as unknown as HostProps}
+        calculateMetadata={({ props }) => meta(props as unknown as HostProps)}
       />
       <Composition
         id="StoryVideo"

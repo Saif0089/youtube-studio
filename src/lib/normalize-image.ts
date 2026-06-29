@@ -5,8 +5,8 @@ import { spawn } from "node:child_process";
 // so every drawing matches the video frame (no squeezing / letterboxing).
 export async function normalizeImage(buf: Buffer, outPath: string): Promise<void> {
   const portrait = process.env.ORIENT === "portrait";
-  const W = portrait ? 1080 : 1280;
-  const H = portrait ? 1920 : 720;
+  const W = portrait ? 1080 : 1920;
+  const H = portrait ? 1920 : 1080;
   const tmp = outPath + ".raw";
   await writeFile(tmp, buf);
   const ok = await new Promise<boolean>((resolve) => {
