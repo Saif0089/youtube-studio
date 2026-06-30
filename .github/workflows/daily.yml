@@ -9,6 +9,11 @@ on:
       words:
         description: "Long-video narration word count (~150 words/min; 850 ≈ 5.5 min)"
         default: "850"
+      target:
+        description: "Which to build"
+        type: choice
+        options: [both, long, short]
+        default: both
   repository_dispatch:           # external trigger (e.g. cron-job.org) via the GitHub API; always runs
     types: [build-video]
 
@@ -52,7 +57,7 @@ jobs:
   # Long video — its own runner + full timeout (so the Short can never starve it, and vice-versa).
   long:
     needs: guard
-    if: needs.guard.outputs.skip != 'true'
+    if: needs.guard.outputs.skip != 'true' && (github.event.inputs.target == '' || github.event.inputs.target == 'both' || github.event.inputs.target == 'long')
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
@@ -105,7 +110,7 @@ jobs:
   # Short — separate runner, so it always renders even if the long video runs long.
   short:
     needs: guard
-    if: needs.guard.outputs.skip != 'true'
+    if: needs.guard.outputs.skip != 'true' && (github.event.inputs.target == '' || github.event.inputs.target == 'both' || github.event.inputs.target == 'short')
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
