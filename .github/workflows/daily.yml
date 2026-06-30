@@ -7,29 +7,27 @@ on:
   workflow_dispatch:             # manual run button (always runs)
     inputs:
       words:
-        description: "Long-video narration word count (~150 words/min; 1350 ≈ 9 min)"
-        default: "1350"
+        description: "Long-video narration word count (~150 words/min; 850 ≈ 5.5 min)"
+        default: "850"
   repository_dispatch:           # external trigger (e.g. cron-job.org) via the GitHub API; always runs
     types: [build-video]
 
 permissions:
   contents: write                # to commit state back
 
-# Never run two daily jobs at once. A second run (e.g. a scheduled one firing while a manual
-# run is still going) waits, then the "already made a video today" guard skips it — no duplicates.
+# Never run two daily batches at once.
 concurrency:
   group: daily-video
   cancel-in-progress: false
 
 jobs:
-  build:
+  # Decide once whether to skip (already made a video today), and ping Discord on start.
+  guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    outputs:
+      skip: ${{ steps.guard.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
-      # Self-healing guard: skip a SCHEDULED run if a video was already made today.
-      # Manual / repository_dispatch runs are never skipped. If the primary failed or was
-      # skipped, the marker isn't updated, so the backup schedule retries automatically.
       - name: Skip if a video was already made today
         id: guard
         run: |
@@ -48,66 +46,45 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$DISCORD_WEBHOOK" ]; then echo "no webhook set"; exit 0; fi
-          MSG="🟢 **Daily doodle pipeline started** (${{ github.event_name }}). Building today's video + Short — this takes ~1 hour.\\nLogs: $RUN_URL"
+          MSG="🟢 **Daily pipeline started** (${{ github.event_name }}). Building today's video + Short (real stock footage + kinetic captions).\\nLogs: $RUN_URL"
           curl -sf -H "Content-Type: application/json" -d "{\"content\": \"$MSG\"}" "$DISCORD_WEBHOOK" || echo "discord notify failed"
+
+  # Long video — its own runner + full timeout (so the Short can never starve it, and vice-versa).
+  long:
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        if: steps.guard.outputs.skip != 'true'
-        with:
-          node-version: "20"
-          cache: "npm"
+        with: { node-version: "20", cache: "npm" }
       - name: Install ffmpeg + fonts
-        if: steps.guard.outputs.skip != 'true'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-liberation fonts-dejavu-core
-      - name: Install uv (for free Edge-TTS narration)
-        if: steps.guard.outputs.skip != 'true'
+      - name: Install uv (free Edge-TTS narration)
         uses: astral-sh/setup-uv@v5
-      - name: Install deps
-        if: steps.guard.outputs.skip != 'true'
-        run: npm ci
+      - run: npm ci
       - name: Install Claude Code (script engine, uses your Max subscription)
-        if: steps.guard.outputs.skip != 'true'
         run: npm i -g @anthropic-ai/claude-code
-      - name: Ensure Remotion browser
-        if: steps.guard.outputs.skip != 'true'
+      - name: Ensure Remotion browser (for the caption overlay render)
         run: npx remotion browser ensure
-      - name: Build + upload daily video (stock backgrounds + doodle host)
-        if: steps.guard.outputs.skip != 'true'
-        env:
-          SCRIPT_PROVIDER: "claude"       # Claude Code (your Max subscription) writes the script + draws the doodle host SVGs
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          VOICE_PROVIDER: "edge"          # free Edge-TTS
-          EDGE_VOICE: "en-US-AndrewNeural"
-          DOODLE_WORDS: ${{ github.event.inputs.words || '1350' }}  # ~9 min; per-sentence stock photos keep render lean
-          DOODLE_SCENES: "16"             # pool of rigged doodle hosts (cycled per sentence for variety)
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}             # free stock photos (primary)
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}           # free stock photos (fallback)
-          RENDER_CONCURRENCY: "2"         # free runner has ~2 cores
-          PUBLISH_MODE: "approval"        # upload PRIVATE for review; set to "auto" to schedule public
-          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
-          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
-          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: npx tsx src/scripts/make-daily.ts
-      - name: Build + upload Short (vertical, stock + doodle host)
-        if: steps.guard.outputs.skip != 'true'
+      - name: Build + upload long video
         env:
           SCRIPT_PROVIDER: "claude"
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"
           EDGE_VOICE: "en-US-AndrewNeural"
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          RENDER_CONCURRENCY: "2"
-          PUBLISH_MODE: "approval"
+          VIDEO_WORDS: ${{ github.event.inputs.words || '850' }}   # ~5.5 min
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}             # free stock video (primary)
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}           # free stock video (fallback)
+          PUBLISH_MODE: "auto"                                      # schedule PUBLIC ~2h after build
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          npx tsx src/scripts/make-short-host.ts
-          npx tsx src/scripts/publish-short.ts
+        run: npx tsx src/scripts/make-daily.ts
       - name: Persist state (used-topics + run marker)
-        if: steps.guard.outputs.skip != 'true' && success()
+        if: success()
         run: |
           date -u +%F > state/last-run.txt
           git config user.name "infotainmentstu-bot"
@@ -115,7 +92,6 @@ jobs:
           git add state/used-topics.json state/last-run.txt || true
           git commit -m "chore: update state [skip ci]" || echo "nothing to commit"
           git push || true
-      # Ping Discord on ANY failure in this job (script gen, narration, render, upload, etc.)
       - name: Notify Discord on failure
         if: failure()
         env:
@@ -123,7 +99,50 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$DISCORD_WEBHOOK" ]; then echo "no webhook set"; exit 0; fi
-          MSG="🔴 **Daily video run FAILED** (${{ github.event_name }}). The video/short was not produced.\\nCheck the logs: $RUN_URL"
-          curl -sf -H "Content-Type: application/json" \
-            -d "{\"content\": \"$MSG\"}" \
-            "$DISCORD_WEBHOOK" || echo "discord notify failed"
+          MSG="🔴 **Long video FAILED** (${{ github.event_name }}). Check the logs: $RUN_URL"
+          curl -sf -H "Content-Type: application/json" -d "{\"content\": \"$MSG\"}" "$DISCORD_WEBHOOK" || echo "discord notify failed"
+
+  # Short — separate runner, so it always renders even if the long video runs long.
+  short:
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm" }
+      - name: Install ffmpeg + fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-liberation fonts-dejavu-core
+      - name: Install uv (free Edge-TTS narration)
+        uses: astral-sh/setup-uv@v5
+      - run: npm ci
+      - name: Install Claude Code (script engine, uses your Max subscription)
+        run: npm i -g @anthropic-ai/claude-code
+      - name: Ensure Remotion browser (for the caption overlay render)
+        run: npx remotion browser ensure
+      - name: Build + upload Short
+        env:
+          SCRIPT_PROVIDER: "claude"
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          VOICE_PROVIDER: "edge"
+          EDGE_VOICE: "en-US-AndrewNeural"
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          PUBLISH_MODE: "auto"
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          npx tsx src/scripts/make-short-host.ts
+          npx tsx src/scripts/publish-short.ts
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then echo "no webhook set"; exit 0; fi
+          MSG="🔴 **Short FAILED** (${{ github.event_name }}). Check the logs: $RUN_URL"
+          curl -sf -H "Content-Type: application/json" -d "{\"content\": \"$MSG\"}" "$DISCORD_WEBHOOK" || echo "discord notify failed"
