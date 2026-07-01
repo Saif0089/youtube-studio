@@ -7,8 +7,8 @@ on:
   workflow_dispatch:             # manual run button (always runs)
     inputs:
       words:
-        description: "Long-video narration word count (~150 words/min; 850 ≈ 5.5 min)"
-        default: "850"
+        description: "Long-video narration word count (~175 words/min; 1400 ≈ 8 min)"
+        default: "1400"
       target:
         description: "Which to build"
         type: choice
@@ -79,7 +79,9 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOICE_PROVIDER: "edge"
           EDGE_VOICE: "en-US-AndrewNeural"
-          VIDEO_WORDS: ${{ github.event.inputs.words || '850' }}   # ~5.5 min
+          VIDEO_WORDS: ${{ github.event.inputs.words || '1400' }}  # ~8 min (two-pass script reliably hits length)
+          VIDEO_SCENES: "12"
+          BEAT_WORDS: "26"                                          # ~9s per clip -> ~50 clips for 8 min
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}             # free stock video (primary)
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}           # free stock video (fallback)
           PUBLISH_MODE: "auto"                                      # schedule PUBLIC ~2h after build

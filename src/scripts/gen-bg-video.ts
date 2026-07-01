@@ -10,6 +10,16 @@ await mkdir("out", { recursive: true });
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
 const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 20); // ~8s of speech per clip
 
+// Modesty guardrail (family-friendly, per the channel's requirement): reject any query whose
+// context tends to return revealing clothing, and substitute a safe, on-topic b-roll query.
+const BANNED = /\b(beach|bikini|swim\w*|pool|lingerie|underwear|bra|cleavage|crop ?top|midriff|belly|gym|workout|fitness|yoga|exercise|aerobics|party|parties|nightclub|club|disco|dance\w*|twerk|model|models|runway|catwalk|fashion show|bar|pub|cocktail|rave|festival|sunbath\w*|spa|sauna|massage|shirtless|topless|shorts|miniskirt)\b/i;
+const SAFE_FALLBACKS = [
+  "hands counting cash", "busy city street", "quiet home interior", "person working at desk",
+  "calm nature landscape", "coffee shop tables", "shopping street crowd", "wallet and coins",
+  "city traffic aerial", "grocery store aisle", "rain on window", "stock market screen",
+];
+const sanitizeQuery = (q: string, i: number): string => (BANNED.test(q) ? SAFE_FALLBACKS[i % SAFE_FALLBACKS.length] : q);
+
 // group visual units into beats of ~TARGET_BEAT_WORDS words
 const units = splitForVisuals(story.script);
 const beats: { text: string; words: number }[] = [];
@@ -30,16 +40,22 @@ const BATCH = 30;
 for (let i = 0; i < beats.length; i += BATCH) {
   const batch = beats.slice(i, i + BATCH);
   const numbered = batch.map((b, j) => `${j + 1}. ${b.text}`).join("\n");
-  const bp = `Below are numbered beats (in order) from a money & behavior psychology video. For EACH beat write ONE concrete 2-4 word STOCK-VIDEO search query for real B-ROLL FOOTAGE that visually matches it — people, places, hands, objects, city life, nature, work, shopping (e.g. "person counting cash", "busy city commute", "hands typing laptop", "ocean waves aerial", "shopping mall crowd", "coffee shop morning"). Prefer footage with natural motion. Avoid abstract words (psychology, behavior), text, charts, logos, brands.
+  const bp = `Below are numbered beats (in order) from a money & behavior psychology video. For EACH beat write ONE concrete 2-4 word STOCK-VIDEO search query for real B-ROLL FOOTAGE that visually matches it.
+
+STRONGLY PREFER objects, hands, places, and environments over full-body people — money, coins, wallets, cards, city streets, cars, houses, shops, desks, laptops, nature, offices, food (e.g. "hands counting cash", "busy city street", "wallet on table", "car in driveway", "grocery shopping cart", "coffee shop tables", "rain on window", "stock market screen").
+
+MODESTY IS REQUIRED (family-friendly channel): all footage must be modest. When people appear they must be FULLY and MODESTLY dressed in everyday or business clothing. NEVER write queries that tend to return swimwear, beaches, pools, gyms, workouts, yoga, dancing, parties, nightclubs, bars, fashion/runway models, or any revealing/immodest clothing.
+
+Prefer footage with natural motion. Avoid abstract words (psychology, behavior), text, charts, logos, brands.
 Return JSON {"queries":[...]} with EXACTLY ${batch.length} queries, in order.
 
 Beats:
 ${numbered}`;
   const out = JSON.parse(await generate(bp, schema));
   let arr: string[] = Array.isArray(out.queries) ? out.queries.map((x: any) => String(x).trim()).filter(Boolean) : [];
-  while (arr.length < batch.length) arr.push(batch[arr.length].text.split(/\s+/).slice(0, 3).join(" "));
+  while (arr.length < batch.length) arr.push(SAFE_FALLBACKS[arr.length % SAFE_FALLBACKS.length]);
   if (arr.length > batch.length) arr = arr.slice(0, batch.length);
-  queries.push(...arr);
+  queries.push(...arr.map((q, j) => sanitizeQuery(q, i + j)));
   console.log(`  queries ${Math.min(i + BATCH, beats.length)}/${beats.length}`);
 }
 
