@@ -16,13 +16,15 @@ const reviewUrl = `https://studio.youtube.com/video/${id}/edit`;
 console.log(`✅ Short uploaded videoId=${id} — ${mode === "auto" ? "scheduled PUBLIC" : "PRIVATE, awaiting review"}`);
 console.log(`   Review & publish: ${reviewUrl}`);
 
+// Discord completion ping (always sent, so you know it finished + get the link)
 const hook = process.env.DISCORD_WEBHOOK;
-if (hook && mode !== "auto") {
+if (hook) {
+  const status = mode === "auto" ? "⏰ scheduled PUBLIC" : "🔒 PRIVATE for review";
   try {
     await fetch(hook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: `📱 **New Short ready for review**\n**${story.title}**\n▶️ Review & publish: <${reviewUrl}>` }),
+      body: JSON.stringify({ content: `✅ **Short done** — ${status}\n**${story.title}**\n▶️ Studio: <${reviewUrl}>` }),
     });
   } catch {
     /* non-fatal */

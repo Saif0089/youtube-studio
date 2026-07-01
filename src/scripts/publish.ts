@@ -30,15 +30,16 @@ if (mode === "auto") {
 console.log(`   Review & publish: ${reviewUrl}`);
 console.log(`   Preview:          ${previewUrl}`);
 
-// Discord push notification (if configured) — pings your phone with the review link
+// Discord completion ping (if configured) — always sent, so you know it finished + get the link
 const hook = process.env.DISCORD_WEBHOOK;
-if (hook && mode !== "auto") {
+if (hook) {
+  const status = mode === "auto" ? "⏰ scheduled to go PUBLIC (~2h)" : "🔒 uploaded PRIVATE for your review";
   try {
     await fetch(hook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        content: `🎬 **New video ready for review**\n**${story.title}**\n▶️ Review & publish: <${reviewUrl}>\n👀 Preview: ${previewUrl}`,
+        content: `✅ **Long video done** — ${status}\n**${story.title}**\n👀 Preview: ${previewUrl}\n▶️ Studio: <${reviewUrl}>`,
       }),
     });
     console.log("   Discord notified");
