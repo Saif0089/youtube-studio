@@ -90,15 +90,9 @@ jobs:
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: npx tsx src/scripts/make-daily.ts
-      - name: Persist state (used-topics + run marker)
+      - name: Persist topic (race-safe; records long + short)
         if: success()
-        run: |
-          date -u +%F > state/last-run.txt
-          git config user.name "infotainmentstu-bot"
-          git config user.email "bot@users.noreply.github.com"
-          git add state/used-topics.json state/last-run.txt || true
-          git commit -m "chore: update state [skip ci]" || echo "nothing to commit"
-          git push || true
+        run: npx tsx src/scripts/persist-topic.ts
       - name: Notify Discord on failure
         if: failure()
         env:
@@ -144,6 +138,9 @@ jobs:
         run: |
           npx tsx src/scripts/make-short-host.ts
           npx tsx src/scripts/publish-short.ts
+      - name: Persist topic (race-safe; records long + short)
+        if: success()
+        run: npx tsx src/scripts/persist-topic.ts
       - name: Notify Discord on failure
         if: failure()
         env:

@@ -27,7 +27,9 @@ const planSchema = {
 };
 const planPrompt = `You plan FACELESS YouTube explainers for "InfotainmentStu" — the PSYCHOLOGY OF MONEY & BEHAVIOR. Binge-worthy, curiosity-driven, genuinely fascinating.
 
-AVOID repeating any of these already-used topics (pick a clearly different angle): ${used.length ? used.join("; ") : "(none yet)"}.
+Already covered — do NOT reuse these OR any close rephrasing of the same idea (e.g. if a "paying with a card / pain of paying" topic is listed, do NOT do another one): ${used.length ? used.join("; ") : "(none yet)"}.
+
+Draw from the WIDE space of behavioral money psychology and pick ONE concept clearly DIFFERENT from everything above — e.g. loss aversion, the sunk-cost fallacy, anchoring, mental accounting, lifestyle inflation, the endowment effect, scarcity mindset, hyperbolic discounting / delayed gratification, price & decoy psychology, social comparison & status signaling, money scripts from childhood, financial shame, windfall / "found money" spending, subscription creep, the Diderot effect, revenge & emotional spending, the IKEA effect, round-number bias, present bias, or another well-established one. Build a fresh, specific, curiosity-driven video around it.
 
 Plan ONE video with a strong narrative arc told in EXACTLY ${sections} sections: hook -> stakes -> the core psychology -> escalating, surprising insights -> a twist -> a satisfying reframe.
 - Pick a genuinely interesting, REAL money-psychology question grounded in well-established behavioral science. No invented studies, names, numbers, or quotes.
