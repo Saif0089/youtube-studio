@@ -89,20 +89,38 @@ async function claudeGenerate(prompt: string, json: boolean): Promise<string> {
 }
 
 // ---- Gemini (free HTTP API) ----
+// Model chain: when a model's free-tier quota is exhausted (hard 429), move down the chain —
+// flash-lite has a separate, much larger daily allowance than flash.
+const GEMINI_CHAIN = [
+  process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash",
+  process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash-lite",
+];
+let geminiModelIdx = 0; // sticky: once a model's quota is gone for the day, stay on the fallback
+
 async function geminiGenerate(prompt: string, schema?: unknown): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) { console.error("GEMINI_API_KEY missing"); process.exit(1); }
-  const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
   const generationConfig: Record<string, unknown> = { temperature: 1.0, maxOutputTokens: 8192 };
   if (schema) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = schema; }
   const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig });
-  for (let attempt = 1; ; attempt++) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
-    if (res.ok) { const data: any = await res.json(); return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? ""; }
-    const errTxt = (await res.text()).slice(0, 300);
-    if ([429, 500, 502, 503, 504].includes(res.status) && attempt <= 6) { await sleep(5000 * attempt); continue; }
-    console.error(`Gemini HTTP ${res.status}: ${errTxt}`); process.exit(1);
+
+  while (geminiModelIdx < GEMINI_CHAIN.length) {
+    const model = GEMINI_CHAIN[geminiModelIdx];
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      if (res.ok) { const data: any = await res.json(); return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? ""; }
+      const errTxt = (await res.text()).slice(0, 300);
+      const hardQuota = res.status === 429 && /quota|plan|billing/i.test(errTxt);
+      if (hardQuota) {
+        console.log(`Gemini ${model} daily quota exhausted — switching to ${GEMINI_CHAIN[geminiModelIdx + 1] ?? "nothing"}…`);
+        break; // fall through to next model in the chain
+      }
+      if ([429, 500, 502, 503, 504].includes(res.status)) { await sleep(5000 * attempt); continue; }
+      console.error(`Gemini HTTP ${res.status}: ${errTxt}`); process.exit(1);
+    }
+    geminiModelIdx++;
   }
+  console.error("All Gemini models exhausted their quota."); process.exit(1);
 }
 
 let limitNotified = false;
