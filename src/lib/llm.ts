@@ -94,28 +94,42 @@ async function claudeGenerate(prompt: string, json: boolean): Promise<string> {
 const GEMINI_CHAIN = [
   process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash",
   process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash-lite",
+  process.env.GEMINI_FALLBACK2_MODEL || "gemma-4-31b-it",     // separate (large) free quota
+  process.env.GEMINI_FALLBACK3_MODEL || "gemini-2.0-flash-lite", // last resort, separate quota
 ];
 let geminiModelIdx = 0; // sticky: once a model's quota is gone for the day, stay on the fallback
 
 async function geminiGenerate(prompt: string, schema?: unknown): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) { console.error("GEMINI_API_KEY missing"); process.exit(1); }
-  const generationConfig: Record<string, unknown> = { temperature: 1.0, maxOutputTokens: 8192 };
-  if (schema) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = schema; }
-  const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig });
 
   while (geminiModelIdx < GEMINI_CHAIN.length) {
     const model = GEMINI_CHAIN[geminiModelIdx];
+    // Gemma models don't support structured-output mode — ask for JSON in-prompt instead.
+    const gemma = model.startsWith("gemma");
+    const generationConfig: Record<string, unknown> = { temperature: 1.0, maxOutputTokens: 8192 };
+    if (schema && !gemma) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = schema; }
+    const text = schema && gemma ? prompt + "\n\nRespond with ONLY a single valid JSON object — no prose, no markdown fences." : prompt;
+    const body = JSON.stringify({ contents: [{ parts: [{ text }] }], generationConfig });
     for (let attempt = 1; attempt <= 6; attempt++) {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
-      if (res.ok) { const data: any = await res.json(); return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? ""; }
-      const errTxt = (await res.text()).slice(0, 300);
-      const hardQuota = res.status === 429 && /quota|plan|billing/i.test(errTxt);
-      if (hardQuota) {
-        console.log(`Gemini ${model} daily quota exhausted — switching to ${GEMINI_CHAIN[geminiModelIdx + 1] ?? "nothing"}…`);
-        break; // fall through to next model in the chain
+      if (res.ok) {
+        const data: any = await res.json();
+        // thinking models return reasoning parts flagged thought:true — never include those
+        const out = (data?.candidates?.[0]?.content?.parts ?? [])
+          .filter((p: any) => !p.thought)
+          .map((p: any) => p.text ?? "")
+          .join("");
+        return schema ? stripJson(out) : out;   // stripJson is a no-op on already-clean JSON
       }
-      if ([429, 500, 502, 503, 504].includes(res.status)) { await sleep(5000 * attempt); continue; }
+      const errTxt = (await res.text()).slice(0, 300);
+      if (res.status === 429) {
+        // free-tier 429s rarely clear quickly — one short retry, then walk down the chain
+        if (attempt < 2 && !/quota|plan|billing/i.test(errTxt)) { await sleep(5000); continue; }
+        console.log(`Gemini ${model} rate/quota limited — switching to ${GEMINI_CHAIN[geminiModelIdx + 1] ?? "nothing"}…`);
+        break;
+      }
+      if ([500, 502, 503, 504].includes(res.status)) { await sleep(5000 * attempt); continue; }
       console.error(`Gemini HTTP ${res.status}: ${errTxt}`); process.exit(1);
     }
     geminiModelIdx++;
