@@ -36,7 +36,7 @@ function stripJson(s: string): string {
 }
 
 // ---- Claude Code (uses your Max subscription via CLAUDE_CODE_OAUTH_TOKEN, or local login) ----
-function claudeOnce(prompt: string): Promise<{ ok: boolean; text: string; auth: boolean; err: string }> {
+function claudeOnce(prompt: string): Promise<{ ok: boolean; text: string; auth: boolean; limit: boolean; err: string }> {
   return new Promise((resolve) => {
     // stdin = ignore so the CLI never waits on stdin (it hangs on headless/CI otherwise)
     const child = spawn("claude", ["-p", prompt, "--output-format", "text"], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
@@ -44,14 +44,17 @@ function claudeOnce(prompt: string): Promise<{ ok: boolean; text: string; auth: 
     let err = "";
     child.stdout.on("data", (d) => (out += d.toString()));
     child.stderr.on("data", (d) => (err += d.toString()));
-    child.on("error", (e) => resolve({ ok: false, text: "", auth: false, err: String(e) }));
+    child.on("error", (e) => resolve({ ok: false, text: "", auth: false, limit: false, err: String(e) }));
     child.on("close", (code) => {
       const blob = (out + " " + err).toLowerCase();
       const auth = /unauthor|authenticat|invalid api key|invalid.*token|token.*(expired|invalid)|expired|oauth|\b401\b|please run|not logged in|\/login/.test(blob);
-      resolve({ ok: code === 0 && out.trim().length > 0, text: out, auth, err: (err || out || `exit ${code}`).slice(0, 400) });
+      const limit = /(weekly|usage|session) limit|limit.*resets|rate.?limit|\b429\b|overloaded/.test(blob);
+      resolve({ ok: code === 0 && out.trim().length > 0, text: out, auth, limit, err: (err || out || `exit ${code}`).slice(0, 400) });
     });
   });
 }
+
+class ClaudeLimitError extends Error {}
 
 async function claudeGenerate(prompt: string, json: boolean): Promise<string> {
   const p = json
@@ -64,6 +67,10 @@ async function claudeGenerate(prompt: string, json: boolean): Promise<string> {
       const cleaned = stripJson(r.text);
       try { JSON.parse(cleaned); return cleaned; } // validate before handing back
       catch { console.log(`Claude returned unparseable JSON (attempt ${attempt}) — retrying…`); await sleep(2000); continue; }
+    }
+    if (r.limit) {
+      // usage/rate limit — retrying is pointless; let generate() fall back to Gemini
+      throw new ClaudeLimitError(r.err.replace(/\s+/g, " ").slice(0, 200));
     }
     if (r.auth) {
       await discordPing(
@@ -98,7 +105,22 @@ async function geminiGenerate(prompt: string, schema?: unknown): Promise<string>
   }
 }
 
+let limitNotified = false;
 export async function generate(prompt: string, schema?: unknown): Promise<string> {
-  if (PROVIDER === "claude") return claudeGenerate(prompt, !!schema);
+  if (PROVIDER === "claude") {
+    try {
+      return await claudeGenerate(prompt, !!schema);
+    } catch (e) {
+      if (e instanceof ClaudeLimitError && process.env.GEMINI_API_KEY) {
+        if (!limitNotified) {
+          limitNotified = true;
+          console.log(`Claude usage limit hit [${e.message}] — falling back to Gemini for this run.`);
+          await discordPing("ℹ️ **Claude weekly limit hit** — today's video is being written by the free Gemini fallback instead. No action needed.");
+        }
+        return geminiGenerate(prompt, schema);
+      }
+      throw e;
+    }
+  }
   return geminiGenerate(prompt, schema);
 }

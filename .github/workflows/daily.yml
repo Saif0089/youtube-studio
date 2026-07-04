@@ -77,6 +77,7 @@ jobs:
         env:
           SCRIPT_PROVIDER: "claude"
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # free fallback when Claude hits its usage limit
           VOICE_PROVIDER: "edge"
           EDGE_VOICE: "en-US-AndrewNeural"
           VIDEO_WORDS: ${{ github.event.inputs.words || '1400' }}  # ~8 min (two-pass script reliably hits length)
@@ -126,6 +127,7 @@ jobs:
         env:
           SCRIPT_PROVIDER: "claude"
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # free fallback when Claude hits its usage limit
           VOICE_PROVIDER: "edge"
           EDGE_VOICE: "en-US-AndrewNeural"
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
