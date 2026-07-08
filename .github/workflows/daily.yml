@@ -82,7 +82,7 @@ jobs:
           EDGE_VOICE: "en-US-AndrewNeural"
           VIDEO_WORDS: ${{ github.event.inputs.words || '850' }}   # ~5 min DENSE (retention over runtime)
           VIDEO_SCENES: "8"
-          BEAT_WORDS: "22"                                          # ~7.5s per clip, snappier cuts
+          BEAT_WORDS: "12"                                          # ~4s per clip — a visual per sentence
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}             # free stock video (primary)
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}           # free stock video (fallback)
           PUBLISH_MODE: "auto"                                      # schedule PUBLIC ~2h after build

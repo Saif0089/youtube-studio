@@ -165,7 +165,8 @@ export async function searchVideo(query: string, exclude: Set<string>, seed: num
 export async function searchVideoScored(queries: string[], exclude: Set<string>): Promise<{ clip: VideoClip; score: number; query: string } | null> {
   for (const q of queries) {
     const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-    const pool = [...await pexelsVideoSearch(q), ...await pixabayVideoSearch(q)].filter((c) => !exclude.has(c.id));
+    let pool = (await pexelsVideoSearch(q)).filter((c) => !exclude.has(c.id));
+    if (pool.length < 6) pool = [...pool, ...(await pixabayVideoSearch(q)).filter((c) => !exclude.has(c.id))];
     if (!pool.length) continue;
     const ranked = pool
       .map((clip) => ({ clip, score: scoreClip(clip, terms), query: q }))

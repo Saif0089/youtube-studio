@@ -9,7 +9,7 @@ import { searchVideoScored, downloadVideo } from "../lib/stock.js";
 // best matches the beat (relevance-scored) — not a lucky-dip top result.
 await mkdir("out", { recursive: true });
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
-const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 22);
+const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 12);  // ~one clip per sentence
 
 // group visual units into beats of ~TARGET_BEAT_WORDS words
 const units = splitForVisuals(story.script);
@@ -35,7 +35,7 @@ const BATCH = 30;
 for (let i = 0; i < beats.length; i += BATCH) {
   const batch = beats.slice(i, i + BATCH);
   const numbered = batch.map((b, j) => `${j + 1}. ${b.text}`).join("\n");
-  const bp = `Below are numbered narration beats (in order) from a money-psychology video. For EACH beat give TWO stock-footage search queries that visually match WHAT THE WORDS SAY:
+  const bp = `Below are numbered narration beats (in order) from a money-psychology video. For EACH beat give TWO stock-footage search queries for the SINGLE MOST VIVID concrete image in that beat (the thing a viewer should SEE while hearing it):
 - "q1": a LITERAL, specific 3-5 word query naming the exact subject/action/object in the beat (if the beat mentions selling a phone -> "person selling smartphone online"; a coffee mug experiment -> "coffee mug on desk"; an insulting low offer -> "person frowning at phone").
 - "q2": a simpler 2-3 word backup for the same idea ("smartphone cash", "coffee mug", "frustrated phone").
 Match the beat's CONCRETE NOUNS AND ACTIONS — never write mood-only queries ("thinking person", "city life") unless the beat truly has no concrete subject. Avoid abstract words (psychology, behavior), text, charts, logos, brands.
