@@ -1,16 +1,24 @@
-export type Candidate = { id: string; url: string; src: "pexels" | "pixabay" };
+export type Candidate = { id: string; url: string; src: "pexels" | "pixabay"; words: string[] };
 
 export function parsePexels(json: any): Candidate[] {
   const photos = Array.isArray(json?.photos) ? json.photos : [];
   return photos
-    .map((p: any) => ({ id: `px-${p.id}`, url: p?.src?.large2x || p?.src?.large || p?.src?.original, src: "pexels" as const }))
+    .map((p: any) => {
+      // photo page URL slug describes content: .../photo/woman-hanging-clothes-12345/
+      const slug = String(p.url ?? "").split("/photo/")[1] ?? "";
+      const words = slug.replace(/-\d+\/?$/, "").split("-").filter(Boolean);
+      return { id: `px-${p.id}`, url: p?.src?.large2x || p?.src?.large || p?.src?.original, src: "pexels" as const, words };
+    })
     .filter((c: Candidate) => !!c.url);
 }
 
 export function parsePixabay(json: any): Candidate[] {
   const hits = Array.isArray(json?.hits) ? json.hits : [];
   return hits
-    .map((h: any) => ({ id: `pb-${h.id}`, url: h?.largeImageURL || h?.webformatURL, src: "pixabay" as const }))
+    .map((h: any) => {
+      const words = String(h.tags ?? "").toLowerCase().split(/,\s*/).flatMap((t: string) => t.split(/\s+/)).filter(Boolean);
+      return { id: `pb-${h.id}`, url: h?.largeImageURL || h?.webformatURL, src: "pixabay" as const, words };
+    })
     .filter((c: Candidate) => !!c.url);
 }
 
@@ -61,6 +69,26 @@ export async function searchPhoto(query: string, exclude: Set<string>, seed: num
     if (pick) { exclude.add(pick.id); return pick; }
     pick = pickCandidate(await pixabaySearch(q), exclude, seed);
     if (pick) { exclude.add(pick.id); return pick; }
+  }
+  return null;
+}
+
+// RELEVANCE-SCORED photo search (photo libraries are ~10x deeper than video — the fallback
+// when no video matches a beat). Same scoring as clips, via URL-slug/tag words.
+export async function searchPhotoScored(queries: string[], exclude: Set<string>): Promise<{ photo: Candidate; score: number; query: string } | null> {
+  for (const q of queries) {
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    let pool = (await pexelsSearch(q)).filter((c) => !exclude.has(c.id));
+    if (pool.length < 6) pool = [...pool, ...(await pixabaySearch(q)).filter((c) => !exclude.has(c.id))];
+    if (!pool.length) continue;
+    const ranked = pool
+      .map((photo) => ({ photo, score: scoreClip(photo, terms), query: q }))
+      .sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    if (best && best.score >= 2) {
+      exclude.add(best.photo.id);
+      return best;
+    }
   }
   return null;
 }
@@ -116,7 +144,7 @@ export function parsePixabayVideo(json: any): VideoClip[] {
 const STOP = new Set(["person", "people", "hand", "hands", "close", "closeup", "video", "footage",
   "putting", "using", "holding", "into", "with", "from", "onto", "over", "young", "man", "woman"]);
 const stem = (w: string) => w.toLowerCase().replace(/s$/, "");
-export function scoreClip(clip: VideoClip, terms: string[]): number {
+export function scoreClip(clip: { words: string[]; duration?: number }, terms: string[]): number {
   const bag = new Set(clip.words.map(stem));
   let s = 0;
   for (const t of terms) {
@@ -125,7 +153,7 @@ export function scoreClip(clip: VideoClip, terms: string[]): number {
     if (bag.has(st)) s += 2;
     else if (clip.words.some((w) => w.toLowerCase().includes(st))) s += 1;
   }
-  if (clip.duration >= 6 && clip.duration <= 45) s += 0.5;  // loopable length bonus
+  if (clip.duration !== undefined && clip.duration >= 6 && clip.duration <= 45) s += 0.5;  // loopable length bonus
   return s;
 }
 

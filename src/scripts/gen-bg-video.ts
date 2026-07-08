@@ -1,12 +1,26 @@
 import "dotenv/config";
 import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { splitForVisuals, words as countWords } from "../lib/sentences.js";
 import { generate } from "../lib/llm.js";
-import { searchVideoScored, downloadVideo } from "../lib/stock.js";
+import { searchVideoScored, searchPhotoScored, downloadVideo, downloadPhoto } from "../lib/stock.js";
+import { normalizeImage } from "../lib/normalize-image.js";
 
-// Groups the script into ~8s beats, asks for TWO candidate stock-video queries per beat
-// (a literal-specific one + a simpler backup), then picks the clip whose OWN description
-// best matches the beat (relevance-scored) — not a lucky-dip top result.
+// Per-sentence beats -> TWO candidate queries each -> relevance-scored VIDEO pick.
+// HYBRID fallback: when no video really matches, use a matched stock PHOTO as a Ken Burns
+// clip (photo libraries are ~10x deeper — a matching photo beats a non-matching video).
+const sh = promisify(execFile);
+async function kenBurnsClip(imgPath: string, outPath: string, idx: number): Promise<void> {
+  const portrait = process.env.ORIENT === "portrait";
+  const W = portrait ? 1080 : 1920, H = portrait ? 1920 : 1080;
+  const zoomIn = idx % 2 === 0;
+  const z = zoomIn ? "min(1.0+0.0006*on,1.16)" : "max(1.16-0.0006*on,1.0)";
+  await sh("ffmpeg", ["-y", "-loglevel", "error", "-loop", "1", "-t", "10", "-i", imgPath,
+    "-vf", `scale=${Math.round(W * 1.25)}:${Math.round(H * 1.25)},zoompan=z='${z}':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=240:s=${W}x${H}:fps=24,setsar=1`,
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", outPath]);
+}
+
 await mkdir("out", { recursive: true });
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
 const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 12);  // ~one clip per sentence
@@ -54,23 +68,50 @@ ${numbered}`;
   console.log(`  queries ${Math.min(i + BATCH, beats.length)}/${beats.length}`);
 }
 
-// scored download; reuse previous on a total miss so a run never fails
+// hybrid scored download: real match on video > real match on photo > any video > reuse previous
 const used = new Set<string>();
+const usedPhotos = new Set<string>();
 let lastGood: string | null = null;
+let photoCount = 0;
 for (let i = 0; i < pairs.length; i++) {
   const out = `out/clip-${i + 1}.mp4`;
-  const found = await searchVideoScored([pairs[i].q1, pairs[i].q2], used);
-  if (found) {
+  const q = [pairs[i].q1, pairs[i].q2];
+  const vid = await searchVideoScored(q, used);
+
+  if (vid && vid.score >= 2) {
     try {
-      await writeFile(out, await downloadVideo(found.clip));
+      await writeFile(out, await downloadVideo(vid.clip));
       lastGood = out;
-      console.log(`  clip-${i + 1}/${pairs.length} ✓ [${found.clip.src} s=${found.score}] "${found.query}" -> ${found.clip.words.slice(0, 6).join(" ")}`);
+      console.log(`  clip-${i + 1}/${pairs.length} ✓ [video s=${vid.score}] "${vid.query}" -> ${vid.clip.words.slice(0, 6).join(" ")}`);
       continue;
-    } catch (e) { console.error(`  clip-${i + 1} download failed: ${e}`); }
+    } catch (e) { console.error(`  clip-${i + 1} video download failed: ${e}`); }
+  }
+
+  // no genuinely matching video — try a matching PHOTO as a Ken Burns clip
+  const ph = await searchPhotoScored(q, usedPhotos);
+  if (ph) {
+    try {
+      await normalizeImage(await downloadPhoto(ph.photo), `out/still-${i + 1}.jpg`);
+      await kenBurnsClip(`out/still-${i + 1}.jpg`, out, i);
+      lastGood = out;
+      photoCount++;
+      console.log(`  clip-${i + 1}/${pairs.length} ✓ [PHOTO s=${ph.score}] "${ph.query}" -> ${ph.photo.words.slice(0, 6).join(" ")}`);
+      continue;
+    } catch (e) { console.error(`  clip-${i + 1} photo path failed: ${e}`); }
+  }
+
+  // last resorts: the unmatched video, then previous clip
+  if (vid) {
+    try {
+      await writeFile(out, await downloadVideo(vid.clip));
+      lastGood = out;
+      console.log(`  clip-${i + 1}/${pairs.length} ~ [video weak s=${vid.score}] "${vid.query}" -> ${vid.clip.words.slice(0, 6).join(" ")}`);
+      continue;
+    } catch { /* fall through */ }
   }
   if (lastGood) { await copyFile(lastGood, out); console.log(`  clip-${i + 1}: reused previous (no match for "${pairs[i].q1}")`); continue; }
   console.error(`clip-${i + 1} FAILED with no fallback`); process.exit(1);
 }
 
 await writeFile("out/beats.json", JSON.stringify(beats.map((b, i) => ({ words: b.words, query: pairs[i].q1 })), null, 1));
-console.log(`✅ ${pairs.length} relevance-scored stock clips`);
+console.log(`✅ ${pairs.length} visuals (${pairs.length - photoCount} video, ${photoCount} ken-burns photo)`);
