@@ -2,23 +2,14 @@ import "dotenv/config";
 import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import { splitForVisuals, words as countWords } from "../lib/sentences.js";
 import { generate } from "../lib/llm.js";
-import { searchVideo, downloadVideo } from "../lib/stock.js";
+import { searchVideoScored, downloadVideo } from "../lib/stock.js";
 
-// Groups the script into ~8s beats, asks for ONE stock-VIDEO search query per beat, then
-// downloads a clip per beat (Pexels -> Pixabay). Writes out/clip-N.mp4 + out/beats.json.
+// Groups the script into ~8s beats, asks for TWO candidate stock-video queries per beat
+// (a literal-specific one + a simpler backup), then picks the clip whose OWN description
+// best matches the beat (relevance-scored) — not a lucky-dip top result.
 await mkdir("out", { recursive: true });
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
-const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 20); // ~8s of speech per clip
-
-// Modesty guardrail (family-friendly, per the channel's requirement): reject any query whose
-// context tends to return revealing clothing, and substitute a safe, on-topic b-roll query.
-const BANNED = /\b(beach|bikini|swim\w*|pool|lingerie|underwear|bra|cleavage|crop ?top|midriff|belly|gym|workout|fitness|yoga|exercise|aerobics|party|parties|nightclub|club|disco|dance\w*|twerk|model|models|runway|catwalk|fashion show|bar|pub|cocktail|rave|festival|sunbath\w*|spa|sauna|massage|shirtless|topless|shorts|miniskirt)\b/i;
-const SAFE_FALLBACKS = [
-  "hands counting cash", "busy city street", "quiet home interior", "person working at desk",
-  "calm nature landscape", "coffee shop tables", "shopping street crowd", "wallet and coins",
-  "city traffic aerial", "grocery store aisle", "rain on window", "stock market screen",
-];
-const sanitizeQuery = (q: string, i: number): string => (BANNED.test(q) ? SAFE_FALLBACKS[i % SAFE_FALLBACKS.length] : q);
+const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 22);
 
 // group visual units into beats of ~TARGET_BEAT_WORDS words
 const units = splitForVisuals(story.script);
@@ -33,51 +24,53 @@ if (cur.length) {
   else beats.push({ text: cur.join(" "), words: cw });
 }
 
-// one concrete stock-VIDEO search query per beat (batched)
-const schema = { type: "object", properties: { queries: { type: "array", items: { type: "string" } } }, required: ["queries"] };
-const queries: string[] = [];
+// two candidate queries per beat (batched)
+const schema = {
+  type: "object",
+  properties: { pairs: { type: "array", items: { type: "object", properties: { q1: { type: "string" }, q2: { type: "string" } }, required: ["q1", "q2"] } } },
+  required: ["pairs"],
+};
+const pairs: { q1: string; q2: string }[] = [];
 const BATCH = 30;
 for (let i = 0; i < beats.length; i += BATCH) {
   const batch = beats.slice(i, i + BATCH);
   const numbered = batch.map((b, j) => `${j + 1}. ${b.text}`).join("\n");
-  const bp = `Below are numbered beats (in order) from a money & behavior psychology video. For EACH beat write ONE concrete 2-4 word STOCK-VIDEO search query for real B-ROLL FOOTAGE that visually matches it.
-
-STRONGLY PREFER objects, hands, places, and environments over full-body people — money, coins, wallets, cards, city streets, cars, houses, shops, desks, laptops, nature, offices, food (e.g. "hands counting cash", "busy city street", "wallet on table", "car in driveway", "grocery shopping cart", "coffee shop tables", "rain on window", "stock market screen").
-
-MODESTY IS REQUIRED (family-friendly channel): all footage must be modest. When people appear they must be FULLY and MODESTLY dressed in everyday or business clothing. NEVER write queries that tend to return swimwear, beaches, pools, gyms, workouts, yoga, dancing, parties, nightclubs, bars, fashion/runway models, or any revealing/immodest clothing.
-
-Prefer footage with natural motion. Avoid abstract words (psychology, behavior), text, charts, logos, brands.
-Return JSON {"queries":[...]} with EXACTLY ${batch.length} queries, in order.
+  const bp = `Below are numbered narration beats (in order) from a money-psychology video. For EACH beat give TWO stock-footage search queries that visually match WHAT THE WORDS SAY:
+- "q1": a LITERAL, specific 3-5 word query naming the exact subject/action/object in the beat (if the beat mentions selling a phone -> "person selling smartphone online"; a coffee mug experiment -> "coffee mug on desk"; an insulting low offer -> "person frowning at phone").
+- "q2": a simpler 2-3 word backup for the same idea ("smartphone cash", "coffee mug", "frustrated phone").
+Match the beat's CONCRETE NOUNS AND ACTIONS — never write mood-only queries ("thinking person", "city life") unless the beat truly has no concrete subject. Avoid abstract words (psychology, behavior), text, charts, logos, brands.
+Return JSON {"pairs":[{"q1":"...","q2":"..."}, ...]} with EXACTLY ${batch.length} pairs, in order.
 
 Beats:
 ${numbered}`;
   const out = JSON.parse(await generate(bp, schema));
-  let arr: string[] = Array.isArray(out.queries) ? out.queries.map((x: any) => String(x).trim()).filter(Boolean) : [];
-  while (arr.length < batch.length) arr.push(SAFE_FALLBACKS[arr.length % SAFE_FALLBACKS.length]);
+  let arr: { q1: string; q2: string }[] = Array.isArray(out.pairs) ? out.pairs.map((x: any) => ({ q1: String(x.q1 ?? "").trim(), q2: String(x.q2 ?? "").trim() })).filter((x: any) => x.q1) : [];
+  while (arr.length < batch.length) {
+    const b = batch[arr.length].text.split(/\s+/).slice(0, 4).join(" ");
+    arr.push({ q1: b, q2: b.split(/\s+/).slice(0, 2).join(" ") });
+  }
   if (arr.length > batch.length) arr = arr.slice(0, batch.length);
-  queries.push(...arr.map((q, j) => sanitizeQuery(q, i + j)));
+  pairs.push(...arr);
   console.log(`  queries ${Math.min(i + BATCH, beats.length)}/${beats.length}`);
 }
 
-// download one clip per beat; reuse previous on a miss so a run never fails
+// scored download; reuse previous on a total miss so a run never fails
 const used = new Set<string>();
 let lastGood: string | null = null;
-for (let i = 0; i < queries.length; i++) {
+for (let i = 0; i < pairs.length; i++) {
   const out = `out/clip-${i + 1}.mp4`;
-  const c = await searchVideo(queries[i], used, i);
-  if (c) {
+  const found = await searchVideoScored([pairs[i].q1, pairs[i].q2], used);
+  if (found) {
     try {
-      await writeFile(out, await downloadVideo(c));
+      await writeFile(out, await downloadVideo(found.clip));
       lastGood = out;
-      console.log(`  clip-${i + 1}/${queries.length} ✓ [${c.src}] ${queries[i]}`);
+      console.log(`  clip-${i + 1}/${pairs.length} ✓ [${found.clip.src} s=${found.score}] "${found.query}" -> ${found.clip.words.slice(0, 6).join(" ")}`);
       continue;
     } catch (e) { console.error(`  clip-${i + 1} download failed: ${e}`); }
   }
-  if (lastGood) { await copyFile(lastGood, out); console.log(`  clip-${i + 1}: reused previous (no match for "${queries[i]}")`); continue; }
-  const generic = await searchVideo("calm nature landscape", used, i);
-  if (generic) { await writeFile(out, await downloadVideo(generic)); lastGood = out; console.log(`  clip-${i + 1}: generic fallback`); }
-  else { console.error(`clip-${i + 1} FAILED with no fallback`); process.exit(1); }
+  if (lastGood) { await copyFile(lastGood, out); console.log(`  clip-${i + 1}: reused previous (no match for "${pairs[i].q1}")`); continue; }
+  console.error(`clip-${i + 1} FAILED with no fallback`); process.exit(1);
 }
 
-await writeFile("out/beats.json", JSON.stringify(beats.map((b, i) => ({ words: b.words, query: queries[i] })), null, 1));
-console.log(`✅ ${queries.length} stock video clips`);
+await writeFile("out/beats.json", JSON.stringify(beats.map((b, i) => ({ words: b.words, query: pairs[i].q1 })), null, 1));
+console.log(`✅ ${pairs.length} relevance-scored stock clips`);

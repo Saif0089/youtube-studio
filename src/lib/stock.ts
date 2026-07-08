@@ -72,7 +72,7 @@ export async function downloadPhoto(c: Candidate): Promise<Buffer> {
 }
 
 // ---- Stock VIDEO clips (same keys; Pexels + Pixabay video APIs) ----
-export type VideoClip = { id: string; url: string; src: "pexels" | "pixabay"; duration: number };
+export type VideoClip = { id: string; url: string; src: "pexels" | "pixabay"; duration: number; words: string[] };
 
 // Choose the .mp4 whose long-axis size is closest to ~1280 (modest download, fine at 1080p output).
 function pickPexelsFile(files: any[]): string | null {
@@ -90,7 +90,10 @@ export function parsePexelsVideo(json: any): VideoClip[] {
   return vids
     .map((v: any) => {
       const url = pickPexelsFile(v.video_files);
-      return url ? { id: `pxv-${v.id}`, url, src: "pexels" as const, duration: Number(v.duration) || 0 } : null;
+      // the page URL slug describes the content: .../video/woman-counting-dollar-bills-123/
+      const slug = String(v.url ?? "").split("/video/")[1] ?? "";
+      const words = slug.replace(/-\d+\/?$/, "").split("-").filter(Boolean);
+      return url ? { id: `pxv-${v.id}`, url, src: "pexels" as const, duration: Number(v.duration) || 0, words } : null;
     })
     .filter(Boolean) as VideoClip[];
 }
@@ -101,16 +104,36 @@ export function parsePixabayVideo(json: any): VideoClip[] {
     .map((h: any) => {
       const v = h.videos || {};
       const f = v.medium || v.large || v.small || v.tiny;
-      return f?.url ? { id: `pbv-${h.id}`, url: f.url, src: "pixabay" as const, duration: Number(h.duration) || 0 } : null;
+      const words = String(h.tags ?? "").toLowerCase().split(/,\s*/).flatMap((t: string) => t.split(/\s+/)).filter(Boolean);
+      return f?.url ? { id: `pbv-${h.id}`, url: f.url, src: "pixabay" as const, duration: Number(h.duration) || 0, words } : null;
     })
     .filter(Boolean) as VideoClip[];
+}
+
+// Score a clip's descriptive words against the search terms (light stemming: strip plural s).
+// Generic verbs/fillers are excluded — "putting cash into pocket" must match on cash/pocket,
+// not win via "putting" against an unrelated clip.
+const STOP = new Set(["person", "people", "hand", "hands", "close", "closeup", "video", "footage",
+  "putting", "using", "holding", "into", "with", "from", "onto", "over", "young", "man", "woman"]);
+const stem = (w: string) => w.toLowerCase().replace(/s$/, "");
+export function scoreClip(clip: VideoClip, terms: string[]): number {
+  const bag = new Set(clip.words.map(stem));
+  let s = 0;
+  for (const t of terms) {
+    const st = stem(t);
+    if (st.length < 3 || STOP.has(t.toLowerCase()) || STOP.has(st)) continue;
+    if (bag.has(st)) s += 2;
+    else if (clip.words.some((w) => w.toLowerCase().includes(st))) s += 1;
+  }
+  if (clip.duration >= 6 && clip.duration <= 45) s += 0.5;  // loopable length bonus
+  return s;
 }
 
 async function pexelsVideoSearch(query: string): Promise<VideoClip[]> {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return [];
   const orient = process.env.ORIENT === "portrait" ? "portrait" : "landscape";
-  const u = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=${orient}&per_page=12`;
+  const u = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=${orient}&per_page=20`;
   const j = await fetchJson(u, { Authorization: key });
   return j ? parsePexelsVideo(j) : [];
 }
@@ -118,7 +141,7 @@ async function pexelsVideoSearch(query: string): Promise<VideoClip[]> {
 async function pixabayVideoSearch(query: string): Promise<VideoClip[]> {
   const key = process.env.PIXABAY_API_KEY;
   if (!key) return [];
-  const u = `https://pixabay.com/api/videos/?key=${key}&q=${encodeURIComponent(query)}&per_page=12&safesearch=true`;
+  const u = `https://pixabay.com/api/videos/?key=${key}&q=${encodeURIComponent(query)}&per_page=20&safesearch=true`;
   const j = await fetchJson(u);
   return j ? parsePixabayVideo(j) : [];
 }
@@ -134,6 +157,28 @@ export async function searchVideo(query: string, exclude: Set<string>, seed: num
     if (pick) { exclude.add(pick.id); return pick; }
   }
   return null;
+}
+
+// RELEVANCE-SCORED search: tries candidate queries in order, pools Pexels+Pixabay results,
+// and returns the clip whose own description best matches the query terms — instead of a
+// pseudo-random top hit. Falls back to the unscored search if nothing scores.
+export async function searchVideoScored(queries: string[], exclude: Set<string>): Promise<{ clip: VideoClip; score: number; query: string } | null> {
+  for (const q of queries) {
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const pool = [...await pexelsVideoSearch(q), ...await pixabayVideoSearch(q)].filter((c) => !exclude.has(c.id));
+    if (!pool.length) continue;
+    const ranked = pool
+      .map((clip) => ({ clip, score: scoreClip(clip, terms), query: q }))
+      .sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    if (best && best.score >= 2) {   // at least one strong term match
+      exclude.add(best.clip.id);
+      return best;
+    }
+  }
+  // nothing matched well — take anything the plain search finds
+  const fallback = await searchVideo(queries[0], exclude, 0);
+  return fallback ? { clip: fallback, score: 0, query: queries[0] } : null;
 }
 
 export async function downloadVideo(c: VideoClip): Promise<Buffer> {
