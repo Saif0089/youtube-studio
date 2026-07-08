@@ -56,8 +56,13 @@ const overlayPattern = `out/overlay/element-%0${padW}d.png`;
 const hasMusic = await exists("out/music.wav");
 const inputs = ["-i", "out/bg.mp4", "-framerate", String(FPS), "-start_number", "0", "-i", overlayPattern, "-i", "out/narration.mp3"];
 let filter = "[0:v][1:v]overlay=format=auto,format=yuv420p[v];";
-if (hasMusic) { inputs.push("-i", "out/music.wav"); filter += "[3:a]volume=0.16[m];[2:a][m]amix=inputs=2:duration=longest[a]"; }
-else filter += "[2:a]anull[a]";
+if (hasMusic) {
+  // duck the music under the voice (sidechain), instead of a fixed low volume
+  inputs.push("-i", "out/music.wav");
+  filter += "[2:a]asplit=2[voxOut][voxKey];" +
+    "[3:a][voxKey]sidechaincompress=threshold=0.03:ratio=10:attack=40:release=500[md];" +
+    "[voxOut][md]amix=inputs=2:normalize=0:duration=longest:weights=1 0.55[a]";
+} else filter += "[2:a]anull[a]";
 await sh("ffmpeg", [
   "-y", "-loglevel", "error", ...inputs, "-filter_complex", filter,
   "-map", "[v]", "-map", "[a]", "-t", String(totalDur),

@@ -9,10 +9,18 @@ const story = JSON.parse(await readFile("out/story.json", "utf8"));
 // approval = upload PRIVATE for your review (default); auto = schedule public ~2h out
 const mode = (process.env.PUBLISH_MODE || "approval").toLowerCase();
 
+// description: story blurb + hashtags + music attribution (CC BY requires credit)
+let description = story.description as string;
+description += "\n\n#psychology #money #behavioraleconomics";
+try {
+  const credit = JSON.parse(await readFile("out/music.json", "utf8")).credit;
+  if (credit) description += `\n\n${credit}`;
+} catch {}
+
 const opts: UploadOptions = {
   videoPath: "out/story.mp4",
   title: story.title,
-  description: story.description,
+  description,
   tags: story.tags,
 };
 if (mode === "auto") opts.publishAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();

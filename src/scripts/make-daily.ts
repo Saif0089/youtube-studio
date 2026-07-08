@@ -22,6 +22,8 @@ await step("7/7 thumbnail", async () => {
   // extract from the CLEAN footage (out/bg.mp4) so burned-in captions don't ghost behind the title
   await run("ffmpeg", ["-y", "-loglevel", "error", "-ss", "7", "-i", "out/bg.mp4", "-frames:v", "1",
     "-vf", "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720", "public/thumb-bg.jpg"]);
+  // try an AI-generated background on top of it (falls back to the frame grab silently)
+  await run("npx", ["tsx", "src/scripts/gen-thumbnail.ts"]).catch((e) => console.error("gen-thumbnail failed (non-fatal):", e));
   await run("npx", ["remotion", "still", "src/remotion/index.ts", "Thumbnail", "out/thumbnail.jpg", "--props=./out/props.json", "--log=error"])
     .catch((e) => console.error("thumbnail failed (non-fatal):", e));
 });

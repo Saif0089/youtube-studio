@@ -7,8 +7,8 @@ on:
   workflow_dispatch:             # manual run button (always runs)
     inputs:
       words:
-        description: "Long-video narration word count (~175 words/min; 1400 ≈ 8 min)"
-        default: "1400"
+        description: "Long-video narration word count (~175 words/min; 850 ≈ 5 min dense)"
+        default: "850"
       target:
         description: "Which to build"
         type: choice
@@ -80,9 +80,9 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # free fallback when Claude hits its usage limit
           VOICE_PROVIDER: "edge"
           EDGE_VOICE: "en-US-AndrewNeural"
-          VIDEO_WORDS: ${{ github.event.inputs.words || '1400' }}  # ~8 min (two-pass script reliably hits length)
-          VIDEO_SCENES: "12"
-          BEAT_WORDS: "26"                                          # ~9s per clip -> ~50 clips for 8 min
+          VIDEO_WORDS: ${{ github.event.inputs.words || '850' }}   # ~5 min DENSE (retention over runtime)
+          VIDEO_SCENES: "8"
+          BEAT_WORDS: "22"                                          # ~7.5s per clip, snappier cuts
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}             # free stock video (primary)
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}           # free stock video (fallback)
           PUBLISH_MODE: "auto"                                      # schedule PUBLIC ~2h after build
@@ -137,9 +137,13 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SHORTS_PER_DAY: "1"             # flip to 2-3 once the new format proves retention
         run: |
-          npx tsx src/scripts/make-short-host.ts
-          npx tsx src/scripts/publish-short.ts
+          for i in $(seq 1 "${SHORTS_PER_DAY:-1}"); do
+            echo "=== Short $i/${SHORTS_PER_DAY:-1} ==="
+            npx tsx src/scripts/make-short-host.ts
+            npx tsx src/scripts/publish-short.ts
+          done
       - name: Persist topic (race-safe; records long + short)
         if: success()
         run: npx tsx src/scripts/persist-topic.ts
