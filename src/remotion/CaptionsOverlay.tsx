@@ -7,9 +7,10 @@ import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } fr
 type CaptionWord = { text: string; start: number; end: number };
 type Line = { start: number; end: number; words: CaptionWord[] };
 type Card = { text: string; start: number };
+type Graphic = { text: string; start: number; end: number };
 export type OverlayProps = {
   fps: number; durationInFrames: number; narrationDurSec: number; fadeTailSec: number;
-  lines: Line[]; cards?: Card[]; title: string; channel: string; portrait?: boolean;
+  lines: Line[]; cards?: Card[]; graphics?: Graphic[]; title: string; channel: string; portrait?: boolean;
 };
 
 const ACCENTS = ["#ff5a3c", "#ffc93c", "#3ecf8e", "#5ab0ff", "#ff7ab6", "#b78bff"];
@@ -22,6 +23,7 @@ export const CaptionsOverlay: React.FC<OverlayProps> = (props) => {
   const t = frame / fps;
   const portrait = props.portrait ?? false;
   const cards = props.cards ?? [];
+  const graphics = props.graphics ?? [];
 
   const titleOpacity = interpolate(t, [0.2, 0.9, 3.4, 4.2], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const titleScale = interpolate(t, [0.2, 0.9], [0.86, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.back(1.5)) });
@@ -53,6 +55,23 @@ export const CaptionsOverlay: React.FC<OverlayProps> = (props) => {
             <div style={{ transform: `scale(${pop}) translateY(${slide}px)`, opacity: dim > 0.2 ? 1 : dim * 5, textAlign: "center" }}>
               <div style={{ width: 120, height: 10, background: ACCENT, margin: "0 auto 28px", borderRadius: 5 }} />
               <div style={{ color: "#fff", fontSize: portrait ? 92 : 120, fontWeight: 900, fontFamily: "'Arial Black', Arial, sans-serif", lineHeight: 1.02, maxWidth: 1400, textTransform: "uppercase", letterSpacing: -1, textShadow: `0 0 60px ${ACCENT}55, 0 6px 30px rgba(0,0,0,0.8)` }}>{activeCard.text}</div>
+            </div>
+          </AbsoluteFill>
+        );
+      })()}
+
+      {/* text-graphic beat: bold punch phrase over the gradient backdrop */}
+      {(() => {
+        const g = graphics.find((x) => t >= x.start && t < x.end);
+        if (!g) return null;
+        const gt = t - g.start;
+        const pop = interpolate(gt, [0, 0.35], [0.6, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.back(2)) });
+        const drift = Math.sin(gt * 1.2) * 6;
+        const fadeOut = interpolate(t, [g.end - 0.3, g.end], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        return (
+          <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: fadeOut }}>
+            <div style={{ transform: `scale(${pop}) translateY(${drift}px)`, textAlign: "center" }}>
+              <div style={{ color: ACCENT, fontSize: portrait ? 100 : 132, fontWeight: 900, fontFamily: "'Arial Black', Arial, sans-serif", lineHeight: 1.04, maxWidth: 1500, textTransform: "uppercase", letterSpacing: -1, textShadow: `0 0 80px ${ACCENT}66, 0 8px 40px rgba(0,0,0,0.9)` }}>{g.text}</div>
             </div>
           </AbsoluteFill>
         );

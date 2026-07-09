@@ -100,7 +100,7 @@ export async function downloadPhoto(c: Candidate): Promise<Buffer> {
 }
 
 // ---- Stock VIDEO clips (same keys; Pexels + Pixabay video APIs) ----
-export type VideoClip = { id: string; url: string; src: "pexels" | "pixabay"; duration: number; words: string[] };
+export type VideoClip = { id: string; url: string; src: "pexels" | "pixabay"; duration: number; words: string[]; thumb?: string };
 
 // Choose the .mp4 whose long-axis size is closest to ~1280 (modest download, fine at 1080p output).
 function pickPexelsFile(files: any[]): string | null {
@@ -121,7 +121,7 @@ export function parsePexelsVideo(json: any): VideoClip[] {
       // the page URL slug describes the content: .../video/woman-counting-dollar-bills-123/
       const slug = String(v.url ?? "").split("/video/")[1] ?? "";
       const words = slug.replace(/-\d+\/?$/, "").split("-").filter(Boolean);
-      return url ? { id: `pxv-${v.id}`, url, src: "pexels" as const, duration: Number(v.duration) || 0, words } : null;
+      return url ? { id: `pxv-${v.id}`, url, src: "pexels" as const, duration: Number(v.duration) || 0, words, thumb: v.image || v.video_pictures?.[0]?.picture } : null;
     })
     .filter(Boolean) as VideoClip[];
 }
@@ -133,7 +133,7 @@ export function parsePixabayVideo(json: any): VideoClip[] {
       const v = h.videos || {};
       const f = v.medium || v.large || v.small || v.tiny;
       const words = String(h.tags ?? "").toLowerCase().split(/,\s*/).flatMap((t: string) => t.split(/\s+/)).filter(Boolean);
-      return f?.url ? { id: `pbv-${h.id}`, url: f.url, src: "pixabay" as const, duration: Number(h.duration) || 0, words } : null;
+      return f?.url ? { id: `pbv-${h.id}`, url: f.url, src: "pixabay" as const, duration: Number(h.duration) || 0, words, thumb: f.thumbnail || h.videos?.tiny?.thumbnail } : null;
     })
     .filter(Boolean) as VideoClip[];
 }
@@ -157,19 +157,19 @@ export function scoreClip(clip: { words: string[]; duration?: number }, terms: s
   return s;
 }
 
-async function pexelsVideoSearch(query: string): Promise<VideoClip[]> {
+async function pexelsVideoSearch(query: string, page = 1): Promise<VideoClip[]> {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return [];
   const orient = process.env.ORIENT === "portrait" ? "portrait" : "landscape";
-  const u = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=${orient}&per_page=20`;
+  const u = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=${orient}&per_page=20&page=${page}`;
   const j = await fetchJson(u, { Authorization: key });
   return j ? parsePexelsVideo(j) : [];
 }
 
-async function pixabayVideoSearch(query: string): Promise<VideoClip[]> {
+async function pixabayVideoSearch(query: string, page = 1): Promise<VideoClip[]> {
   const key = process.env.PIXABAY_API_KEY;
   if (!key) return [];
-  const u = `https://pixabay.com/api/videos/?key=${key}&q=${encodeURIComponent(query)}&per_page=20&safesearch=true`;
+  const u = `https://pixabay.com/api/videos/?key=${key}&q=${encodeURIComponent(query)}&per_page=20&page=${page}&safesearch=true`;
   const j = await fetchJson(u);
   return j ? parsePixabayVideo(j) : [];
 }
@@ -185,6 +185,25 @@ export async function searchVideo(query: string, exclude: Set<string>, seed: num
     if (pick) { exclude.add(pick.id); return pick; }
   }
   return null;
+}
+
+// Ranked candidates for a beat (top-N by metadata score) — the vision picker chooses among these.
+export async function candidateVideos(queries: string[], exclude: Set<string>, topN = 5): Promise<{ clip: VideoClip; score: number; query: string }[]> {
+  const seen = new Set<string>();
+  const all: { clip: VideoClip; score: number; query: string }[] = [];
+  for (const q of queries) {
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    let pool = (await pexelsVideoSearch(q)).filter((c) => !exclude.has(c.id) && !seen.has(c.id));
+    if (pool.length < 6) pool = [...pool, ...(await pexelsVideoSearch(q, 2)).filter((c) => !exclude.has(c.id) && !seen.has(c.id))];
+    if (pool.length < 6) pool = [...pool, ...(await pixabayVideoSearch(q)).filter((c) => !exclude.has(c.id) && !seen.has(c.id))];
+    if (pool.length < 6) pool = [...pool, ...(await pixabayVideoSearch(q, 2)).filter((c) => !exclude.has(c.id) && !seen.has(c.id))];
+    for (const clip of pool) {
+      seen.add(clip.id);
+      all.push({ clip, score: scoreClip(clip, terms), query: q });
+    }
+    if (all.filter((x) => x.score >= 2).length >= topN) break;  // enough strong candidates
+  }
+  return all.sort((a, b) => b.score - a.score).slice(0, topN);
 }
 
 // RELEVANCE-SCORED search: tries candidate queries in order, pools Pexels+Pixabay results,

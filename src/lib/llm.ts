@@ -137,6 +137,89 @@ async function geminiGenerate(prompt: string, schema?: unknown): Promise<string>
   console.error("All Gemini models exhausted their quota."); process.exit(1);
 }
 
+// ---- Gemini IMAGE GENERATION (free tier): custom visuals made to order per beat ----
+const IMAGE_CHAIN = [
+  process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image",
+  "gemini-3.1-flash-image",
+];
+let imageModelIdx = 0;
+
+export async function generateImage(prompt: string): Promise<Buffer | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { responseModalities: ["IMAGE"] },
+  });
+  while (imageModelIdx < IMAGE_CHAIN.length) {
+    const model = IMAGE_CHAIN[imageModelIdx];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (res.ok) {
+          const data: any = await res.json();
+          const img = (data?.candidates?.[0]?.content?.parts ?? []).find((p: any) => p.inlineData?.data);
+          return img ? Buffer.from(img.inlineData.data, "base64") : null;
+        }
+        const errTxt = (await res.text()).slice(0, 200);
+        if (res.status === 429) {
+          if (attempt < 2 && !/quota|plan|billing/i.test(errTxt)) { await sleep(4000); continue; }
+          break; // next model
+        }
+        if ([500, 502, 503, 504].includes(res.status)) { await sleep(3000); continue; }
+        return null;
+      } catch { return null; }
+    }
+    imageModelIdx++;
+  }
+  return null;
+}
+
+// ---- Gemini VISION (free): judge candidate stock thumbnails against the narration ----
+// Separate sticky chain (vision-capable models only). Returns null on total failure so the
+// caller can fall back to metadata scoring — vision must never break a run.
+const VISION_CHAIN = [
+  process.env.GEMINI_VISION_MODEL || "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash-lite",
+];
+let visionModelIdx = 0;
+
+export async function generateVision(prompt: string, images: Buffer[]): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !images.length) return null;
+  const parts = [
+    { text: prompt },
+    ...images.map((b) => ({ inline_data: { mime_type: "image/jpeg", data: b.toString("base64") } })),
+  ];
+  const body = JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.2, maxOutputTokens: 200 } });
+
+  while (visionModelIdx < VISION_CHAIN.length) {
+    const model = VISION_CHAIN[visionModelIdx];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (res.ok) {
+          const data: any = await res.json();
+          return (data?.candidates?.[0]?.content?.parts ?? [])
+            .filter((p: any) => !p.thought)
+            .map((p: any) => p.text ?? "")
+            .join("");
+        }
+        const errTxt = (await res.text()).slice(0, 200);
+        if (res.status === 429) {
+          if (attempt < 2 && !/quota|plan|billing/i.test(errTxt)) { await sleep(4000); continue; }
+          break; // next model
+        }
+        if ([500, 502, 503, 504].includes(res.status)) { await sleep(3000); continue; }
+        return null; // non-retryable — give up quietly
+      } catch { return null; }
+    }
+    visionModelIdx++;
+  }
+  return null;
+}
+
 let limitNotified = false;
 export async function generate(prompt: string, schema?: unknown): Promise<string> {
   if (PROVIDER === "claude") {

@@ -1,31 +1,49 @@
 import "dotenv/config";
-import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { splitForVisuals, words as countWords } from "../lib/sentences.js";
-import { generate } from "../lib/llm.js";
-import { searchVideoScored, searchPhotoScored, downloadVideo, downloadPhoto } from "../lib/stock.js";
+import { generate, generateImage, generateVision } from "../lib/llm.js";
+import { candidateVideos, searchPhotoScored, downloadVideo, downloadPhoto } from "../lib/stock.js";
 import { normalizeImage } from "../lib/normalize-image.js";
 
-// Per-sentence beats -> TWO candidate queries each -> relevance-scored VIDEO pick.
-// HYBRID fallback: when no video really matches, use a matched stock PHOTO as a Ken Burns
-// clip (photo libraries are ~10x deeper — a matching photo beats a non-matching video).
+// V7 "AI STORYBOARD": every ~sentence beat gets a SHOT LIST of 2-3 visuals (~1.5-2.5s each —
+// ~5x the cut rate of the original pipeline). Each shot is AI-GENERATED to depict the exact
+// moment (Gemini image, consistent cinematic style); stock (vision-verified) and punch-text
+// graphics fill in. Ladder per shot: generated image > vision-verified stock > matched photo
+// > graphic card. All $0; quota-dead days degrade gracefully to stock.
 const sh = promisify(execFile);
+const portrait = process.env.ORIENT === "portrait";
+const W = portrait ? 1080 : 1920, H = portrait ? 1920 : 1080;
+const STYLE = process.env.IMAGE_STYLE ||
+  "Cinematic editorial illustration, dramatic rim lighting, rich saturated colors, high detail, slightly stylized realism";
+
 async function kenBurnsClip(imgPath: string, outPath: string, idx: number): Promise<void> {
-  const portrait = process.env.ORIENT === "portrait";
-  const W = portrait ? 1080 : 1920, H = portrait ? 1920 : 1080;
-  const zoomIn = idx % 2 === 0;
-  const z = zoomIn ? "min(1.0+0.0006*on,1.16)" : "max(1.16-0.0006*on,1.0)";
-  await sh("ffmpeg", ["-y", "-loglevel", "error", "-loop", "1", "-t", "10", "-i", imgPath,
-    "-vf", `scale=${Math.round(W * 1.25)}:${Math.round(H * 1.25)},zoompan=z='${z}':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=240:s=${W}x${H}:fps=24,setsar=1`,
+  // fast, punchy moves for short shots
+  const moves = [
+    { z: "min(1.0+0.0018*on,1.20)", x: "(iw-iw/zoom)/2", y: "(ih-ih/zoom)/2" },
+    { z: "max(1.20-0.0018*on,1.0)", x: "(iw-iw/zoom)/2", y: "(ih-ih/zoom)/2" },
+    { z: "1.15", x: "(iw-iw/zoom)*on/96", y: "(ih-ih/zoom)/2" },
+    { z: "1.15", x: "(iw-iw/zoom)*(1-on/96)", y: "(ih-ih/zoom)/2" },
+  ][idx % 4];
+  await sh("ffmpeg", ["-y", "-loglevel", "error", "-loop", "1", "-t", "4", "-i", imgPath,
+    "-vf", `scale=${Math.round(W * 1.3)}:${Math.round(H * 1.3)},zoompan=z='${moves.z}':x='${moves.x}':y='${moves.y}':d=96:s=${W}x${H}:fps=24,setsar=1`,
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", outPath]);
+}
+
+async function gradientClip(outPath: string, idx: number): Promise<void> {
+  const hues = ["0x1a1030", "0x0e1e2e", "0x201420", "0x102018"];
+  await sh("ffmpeg", ["-y", "-loglevel", "error",
+    "-f", "lavfi", "-i", `color=c=${hues[idx % 4]}:s=${W}x${H}:d=4:r=24`,
+    "-vf", "noise=alls=6:allf=t,vignette=PI/4,format=yuv420p",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", outPath]);
 }
 
 await mkdir("out", { recursive: true });
 const story = JSON.parse(await readFile("out/story.json", "utf8"));
-const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 12);  // ~one clip per sentence
+const TARGET_BEAT_WORDS = Number(process.env.BEAT_WORDS || 12);
 
-// group visual units into beats of ~TARGET_BEAT_WORDS words
+// ~sentence beats
 const units = splitForVisuals(story.script);
 const beats: { text: string; words: number }[] = [];
 let cur: string[] = [], cw = 0;
@@ -38,80 +56,148 @@ if (cur.length) {
   else beats.push({ text: cur.join(" "), words: cw });
 }
 
-// two candidate queries per beat (batched)
+// storyboard: 2-3 shots per beat
+type Shot = { k: "gen" | "stock" | "graphic"; p: string };
+type BeatPlan = { shots: Shot[]; alt: string };
 const schema = {
   type: "object",
-  properties: { pairs: { type: "array", items: { type: "object", properties: { q1: { type: "string" }, q2: { type: "string" } }, required: ["q1", "q2"] } } },
-  required: ["pairs"],
+  properties: { storyboard: { type: "array", items: { type: "object", properties: {
+    shots: { type: "array", items: { type: "object", properties: {
+      k: { type: "string", enum: ["gen", "stock", "graphic"] }, p: { type: "string" },
+    }, required: ["k", "p"] } },
+    alt: { type: "string" },
+  }, required: ["shots", "alt"] } } },
+  required: ["storyboard"],
 };
-const pairs: { q1: string; q2: string }[] = [];
-const BATCH = 30;
+const plans: BeatPlan[] = [];
+const BATCH = 20;
 for (let i = 0; i < beats.length; i += BATCH) {
   const batch = beats.slice(i, i + BATCH);
   const numbered = batch.map((b, j) => `${j + 1}. ${b.text}`).join("\n");
-  const bp = `Below are numbered narration beats (in order) from a money-psychology video. For EACH beat give TWO stock-footage search queries for the SINGLE MOST VIVID concrete image in that beat (the thing a viewer should SEE while hearing it):
-- "q1": a LITERAL, specific 3-5 word query naming the exact subject/action/object in the beat (if the beat mentions selling a phone -> "person selling smartphone online"; a coffee mug experiment -> "coffee mug on desk"; an insulting low offer -> "person frowning at phone").
-- "q2": a simpler 2-3 word backup for the same idea ("smartphone cash", "coffee mug", "frustrated phone").
-Match the beat's CONCRETE NOUNS AND ACTIONS — never write mood-only queries ("thinking person", "city life") unless the beat truly has no concrete subject. Avoid abstract words (psychology, behavior), text, charts, logos, brands.
-Return JSON {"pairs":[{"q1":"...","q2":"..."}, ...]} with EXACTLY ${batch.length} pairs, in order.
+  const bp = `You are the storyboard editor of a fast-paced money-psychology explainer. For EACH numbered narration beat below, design 2-3 SHOTS (visual cuts shown while that beat is heard — fast rhythm, a new visual every ~2 seconds).
+
+Each shot: {"k": kind, "p": prompt}
+- "gen": an AI-image of the EXACT moment — a vivid one-sentence scene description matching precisely what the words say at that point ("a man's hand holding a phone showing a marketplace listing, shocked face reflected on the dark screen"). Most shots should be "gen". No text/words/numbers in the image. Any people modestly and fully dressed.
+- "stock": ONLY for generic real-world footage that certainly exists (city streets, hands counting cash, shops) — a 3-5 word search query.
+- "graphic": a 2-4 word PUNCH PHRASE for a bold text card ("YOUR BRAIN LIES", "THE FLIP TEST") — the single strongest claim/number moment; max one per beat, roughly one every 3-4 beats overall.
+Also give "alt": the beat's 2-4 word punch phrase (fallback text card).
+Shots must follow the beat's narrative order so visuals track the words as spoken.
+Return JSON {"storyboard":[{"shots":[...],"alt":"..."}]} with EXACTLY ${batch.length} entries, in order.
 
 Beats:
 ${numbered}`;
   const out = JSON.parse(await generate(bp, schema));
-  let arr: { q1: string; q2: string }[] = Array.isArray(out.pairs) ? out.pairs.map((x: any) => ({ q1: String(x.q1 ?? "").trim(), q2: String(x.q2 ?? "").trim() })).filter((x: any) => x.q1) : [];
+  let arr: BeatPlan[] = Array.isArray(out.storyboard) ? out.storyboard.map((x: any) => ({
+    shots: (Array.isArray(x.shots) && x.shots.length ? x.shots : [{ k: "stock", p: "money" }])
+      .slice(0, 3)
+      .map((s0: any) => ({ k: ["gen", "stock", "graphic"].includes(s0.k) ? s0.k : "gen", p: String(s0.p ?? "").trim() })),
+    alt: String(x.alt ?? "").trim() || "MONEY MIND",
+  })) : [];
   while (arr.length < batch.length) {
-    const b = batch[arr.length].text.split(/\s+/).slice(0, 4).join(" ");
-    arr.push({ q1: b, q2: b.split(/\s+/).slice(0, 2).join(" ") });
+    const b = batch[arr.length].text.split(/\s+/);
+    arr.push({ shots: [{ k: "stock", p: b.slice(0, 4).join(" ") }], alt: b.slice(0, 3).join(" ").toUpperCase() });
   }
   if (arr.length > batch.length) arr = arr.slice(0, batch.length);
-  pairs.push(...arr);
-  console.log(`  queries ${Math.min(i + BATCH, beats.length)}/${beats.length}`);
+  plans.push(...arr);
+  console.log(`  storyboard ${Math.min(i + BATCH, beats.length)}/${beats.length}`);
 }
 
-// hybrid scored download: real match on video > real match on photo > any video > reuse previous
+// vision pick among stock candidates (thumbnails -> Gemini)
+async function visionPick(beatText: string, visual: string, cands: { clip: { thumb?: string } }[]): Promise<number> {
+  const thumbs: Buffer[] = []; const map: number[] = [];
+  for (let k = 0; k < cands.length; k++) {
+    const t = cands[k].clip.thumb;
+    if (!t) continue;
+    try {
+      const r = await fetch(t, { signal: AbortSignal.timeout(10000) });
+      if (!r.ok) continue;
+      thumbs.push(Buffer.from(await r.arrayBuffer())); map.push(k);
+    } catch { /* skip */ }
+    if (thumbs.length >= 4) break;
+  }
+  if (thumbs.length < 2) return -1;
+  const resp = await generateVision(
+    `Narration: "${beatText}"\nIntended visual: "${visual}"\nThe ${thumbs.length} images are candidate clips (1-${thumbs.length}). Which ONE clearly depicts the intended visual? BE STRICT — reply 0 if none clearly fits. Reply ONLY JSON: {"best": <0-${thumbs.length}>}`,
+    thumbs);
+  if (!resp) return -1;
+  try {
+    const n = Number(JSON.parse(resp.replace(/```(?:json)?|```/g, "").trim()).best);
+    return n >= 1 && n <= thumbs.length ? map[n - 1] : -2;
+  } catch { return -1; }
+}
+
 const used = new Set<string>();
 const usedPhotos = new Set<string>();
-let lastGood: string | null = null;
-let photoCount = 0;
-for (let i = 0; i < pairs.length; i++) {
-  const out = `out/clip-${i + 1}.mp4`;
-  const q = [pairs[i].q1, pairs[i].q2];
-  const vid = await searchVideoScored(q, used);
+let clipN = 0;
+let genQuotaDead = false;
+const shotMeta: { beat: number; type: "footage" | "graphic"; text: string }[] = [];
+const stats = { gen: 0, stock: 0, photo: 0, graphic: 0 };
 
-  if (vid && vid.score >= 2) {
-    try {
-      await writeFile(out, await downloadVideo(vid.clip));
-      lastGood = out;
-      console.log(`  clip-${i + 1}/${pairs.length} ✓ [video s=${vid.score}] "${vid.query}" -> ${vid.clip.words.slice(0, 6).join(" ")}`);
-      continue;
-    } catch (e) { console.error(`  clip-${i + 1} video download failed: ${e}`); }
-  }
+for (let i = 0; i < plans.length; i++) {
+  for (const shot of plans[i].shots) {
+    clipN++;
+    const out = `out/clip-${clipN}.mp4`;
 
-  // no genuinely matching video — try a matching PHOTO as a Ken Burns clip
-  const ph = await searchPhotoScored(q, usedPhotos);
-  if (ph) {
-    try {
-      await normalizeImage(await downloadPhoto(ph.photo), `out/still-${i + 1}.jpg`);
-      await kenBurnsClip(`out/still-${i + 1}.jpg`, out, i);
-      lastGood = out;
-      photoCount++;
-      console.log(`  clip-${i + 1}/${pairs.length} ✓ [PHOTO s=${ph.score}] "${ph.query}" -> ${ph.photo.words.slice(0, 6).join(" ")}`);
+    if (shot.k === "graphic") {
+      await gradientClip(out, clipN);
+      shotMeta.push({ beat: i, type: "graphic", text: shot.p || plans[i].alt });
+      stats.graphic++;
+      console.log(`  clip-${clipN} [b${i + 1}] ▣ GRAPHIC "${shot.p}"`);
       continue;
-    } catch (e) { console.error(`  clip-${i + 1} photo path failed: ${e}`); }
-  }
+    }
 
-  // last resorts: the unmatched video, then previous clip
-  if (vid) {
-    try {
-      await writeFile(out, await downloadVideo(vid.clip));
-      lastGood = out;
-      console.log(`  clip-${i + 1}/${pairs.length} ~ [video weak s=${vid.score}] "${vid.query}" -> ${vid.clip.words.slice(0, 6).join(" ")}`);
-      continue;
-    } catch { /* fall through */ }
+    // 1) generated image (unless quota already died this run)
+    if (shot.k === "gen" && !genQuotaDead) {
+      const img = await generateImage(`${shot.p}. Style: ${STYLE}. 16:9 wide composition. No text, letters, or numbers anywhere in the image. Any people modestly and fully dressed.`);
+      if (img) {
+        await normalizeImage(img, `out/gen-${clipN}.jpg`);
+        await kenBurnsClip(`out/gen-${clipN}.jpg`, out, clipN);
+        shotMeta.push({ beat: i, type: "footage", text: "" });
+        stats.gen++;
+        console.log(`  clip-${clipN} [b${i + 1}] ✨ GEN "${shot.p.slice(0, 60)}"`);
+        continue;
+      }
+      genQuotaDead = true;
+      console.log("  (image quota exhausted — remaining gen shots use stock fallback)");
+    }
+
+    // 2) stock, vision-verified
+    const q = shot.k === "stock" ? shot.p : shot.p.split(/\s+/).slice(0, 5).join(" ");
+    const cands = await candidateVideos([q], used, 4);
+    let chosen = cands.length ? await visionPick(beats[i].text, q, cands) : -1;
+    if (chosen === -1 && cands.length && cands[0].score >= 2) chosen = 0;
+    if (chosen >= 0) {
+      try {
+        await writeFile(out, await downloadVideo(cands[chosen].clip));
+        used.add(cands[chosen].clip.id);
+        shotMeta.push({ beat: i, type: "footage", text: "" });
+        stats.stock++;
+        console.log(`  clip-${clipN} [b${i + 1}] ✓ STOCK s=${cands[chosen].score} "${q}" -> ${cands[chosen].clip.words.slice(0, 5).join(" ")}`);
+        continue;
+      } catch { /* fall through */ }
+    }
+
+    // 3) matched photo
+    const ph = await searchPhotoScored([q], usedPhotos);
+    if (ph && ph.score >= 2) {
+      try {
+        await normalizeImage(await downloadPhoto(ph.photo), `out/still-${clipN}.jpg`);
+        await kenBurnsClip(`out/still-${clipN}.jpg`, out, clipN);
+        shotMeta.push({ beat: i, type: "footage", text: "" });
+        stats.photo++;
+        console.log(`  clip-${clipN} [b${i + 1}] ✓ PHOTO s=${ph.score} "${q}"`);
+        continue;
+      } catch { /* fall through */ }
+    }
+
+    // 4) honest graphic card
+    await gradientClip(out, clipN);
+    shotMeta.push({ beat: i, type: "graphic", text: plans[i].alt });
+    stats.graphic++;
+    console.log(`  clip-${clipN} [b${i + 1}] ▣ GRAPHIC fallback "${plans[i].alt}"`);
   }
-  if (lastGood) { await copyFile(lastGood, out); console.log(`  clip-${i + 1}: reused previous (no match for "${pairs[i].q1}")`); continue; }
-  console.error(`clip-${i + 1} FAILED with no fallback`); process.exit(1);
 }
 
-await writeFile("out/beats.json", JSON.stringify(beats.map((b, i) => ({ words: b.words, query: pairs[i].q1 })), null, 1));
-console.log(`✅ ${pairs.length} visuals (${pairs.length - photoCount} video, ${photoCount} ken-burns photo)`);
+await writeFile("out/beats.json", JSON.stringify(beats.map((b) => ({ words: b.words })), null, 1));
+await writeFile("out/shots.json", JSON.stringify(shotMeta, null, 1));
+console.log(`✅ ${clipN} shots for ${beats.length} beats — ${stats.gen} generated, ${stats.stock} stock, ${stats.photo} photo, ${stats.graphic} graphic`);
