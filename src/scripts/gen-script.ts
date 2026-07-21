@@ -59,26 +59,45 @@ Return ONLY the narration text.`;
 }
 const script = parts.join("\n\n");
 
-// --- Pass 3: ONE image prompt per sentence (so visuals illustrate exactly what's said) ---
-const sentences = splitForVisuals(script);
+// --- Pass 3: image prompts ---
+// "doodle" (default): ONE whiteboard-doodle prompt per sentence (cheap, keyless image models).
+// "photo": a SMALL set of cinematic photo beats (RealVisXL is ~90s/image, so one-per-sentence
+// would take hours) — each is held longer with Ken Burns motion in the render.
+const imageStyle = (process.env.IMAGE_STYLE || "doodle").toLowerCase();
 const promptSchema = { type: "object", properties: { prompts: { type: "array", items: { type: "string" } } }, required: ["prompts"] };
-const BATCH = 40;
-const imagePrompts: string[] = [];
-for (let i = 0; i < sentences.length; i += BATCH) {
-  const batch = sentences.slice(i, i + BATCH);
-  const numbered = batch.map((s, j) => `${j + 1}. ${s}`).join("\n");
-  const bp = `Below are numbered lines (in order) from a money & behavior psychology explainer narration. For EACH line, write ONE image prompt: a simple, colorful, minimalist whiteboard doodle that clearly ILLUSTRATES that specific line — a stick figure doing a clear action, or a simple object/scene that matches exactly what the line is saying. One clear visual idea each, distinct from the others. No readable text, letters, numbers, logos, or realistic faces. Do not describe art style.
+let imagePrompts: string[] = [];
+
+if (imageStyle === "photo") {
+  // Density off the ACTUAL script length (~one fresh photo per ~120 words ≈ ~48s), not the target.
+  const scriptWords = script.split(/\s+/).filter(Boolean).length;
+  const photoCount = Math.max(4, Number(process.env.PHOTO_IMAGES || Math.round(scriptWords / 120)));
+  const pp = `Below is the full narration of a money & behavior psychology explainer video. Break it into EXACTLY ${photoCount} visual beats, IN ORDER, evenly covering the script from start to end. For EACH beat write ONE photographic scene description for a photorealistic image model: a real person (or people) in a real setting, doing something specific that illustrates that part of the script — say who, where, the action, and the mood/lighting. Make the ${photoCount} scenes visually varied (different people, places, angles, times of day). No text, words, numbers, logos, charts, graphs, or split-screens.
+Return JSON {"prompts":[...]} with EXACTLY ${photoCount} prompts, in order.
+
+Narration:
+${script}`;
+  const out = JSON.parse(await gemini(pp, promptSchema));
+  imagePrompts = Array.isArray(out.prompts) ? out.prompts.map((x: any) => String(x).trim()).filter(Boolean) : [];
+  console.log(`  ${imagePrompts.length} photoreal scene prompts (target ${photoCount})`);
+} else {
+  const sentences = splitForVisuals(script);
+  const BATCH = 40;
+  for (let i = 0; i < sentences.length; i += BATCH) {
+    const batch = sentences.slice(i, i + BATCH);
+    const numbered = batch.map((s, j) => `${j + 1}. ${s}`).join("\n");
+    const bp = `Below are numbered lines (in order) from a money & behavior psychology explainer narration. For EACH line, write ONE image prompt: a simple, colorful, minimalist whiteboard doodle that clearly ILLUSTRATES that specific line — a stick figure doing a clear action, or a simple object/scene that matches exactly what the line is saying. One clear visual idea each, distinct from the others. No readable text, letters, numbers, logos, or realistic faces. Do not describe art style.
 Return JSON {"prompts": [...]} with EXACTLY ${batch.length} prompts, in the same order as the lines.
 
 Lines:
 ${numbered}`;
-  const out = JSON.parse(await gemini(bp, promptSchema));
-  let arr: string[] = Array.isArray(out.prompts) ? out.prompts.map((x: any) => String(x).trim()).filter(Boolean) : [];
-  while (arr.length < batch.length) arr.push(batch[arr.length]); // fallback: use the sentence text itself
-  if (arr.length > batch.length) arr = arr.slice(0, batch.length);
-  imagePrompts.push(...arr);
-  console.log(`  prompts ${Math.min(i + BATCH, sentences.length)}/${sentences.length}`);
-  await sleep(PACE);
+    const out = JSON.parse(await gemini(bp, promptSchema));
+    let arr: string[] = Array.isArray(out.prompts) ? out.prompts.map((x: any) => String(x).trim()).filter(Boolean) : [];
+    while (arr.length < batch.length) arr.push(batch[arr.length]); // fallback: use the sentence text itself
+    if (arr.length > batch.length) arr = arr.slice(0, batch.length);
+    imagePrompts.push(...arr);
+    console.log(`  prompts ${Math.min(i + BATCH, sentences.length)}/${sentences.length}`);
+    await sleep(PACE);
+  }
 }
 
 const story = {

@@ -12,6 +12,7 @@ const step = async (name: string, fn: () => Promise<void>) => { console.log(`\n=
 const voice = (process.env.VOICE_PROVIDER || "edge").toLowerCase();
 const imageProvider = (process.env.IMAGE_PROVIDER || "meshy").toLowerCase();
 const imgScripts: Record<string, string> = {
+  comfy: "src/scripts/gen-scenes-comfy.ts",
   meshy: "src/scripts/gen-scenes-meshy.ts",
   local: "src/scripts/gen-scenes-local.ts",
   pollinations: "src/scripts/gen-scenes-pollinations.ts",

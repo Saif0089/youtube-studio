@@ -12,14 +12,17 @@ const run = (cmd: string, args: string[]) =>
 const step = async (name: string, fn: () => Promise<void>) => { console.log(`\n=== ${name} ===`); await fn(); };
 
 const voice = (process.env.VOICE_PROVIDER || "edge").toLowerCase();
-const imageProvider = (process.env.IMAGE_PROVIDER || "meshy").toLowerCase();
+const imageProvider = (process.env.IMAGE_PROVIDER || "comfy").toLowerCase();
 const comp = process.env.REMOTION_COMP || "ExplainerVideo";
 const imgScripts: Record<string, string> = {
+  comfy: "src/scripts/gen-scenes-comfy.ts",
   meshy: "src/scripts/gen-scenes-meshy.ts",
   local: "src/scripts/gen-scenes-local.ts",
   pollinations: "src/scripts/gen-scenes-pollinations.ts",
   cloudflare: "src/scripts/gen-scenes-cf.ts",
 };
+// RealVisXL photoreal provider needs photographic (not doodle) scene prompts.
+if (imageProvider === "comfy") process.env.IMAGE_STYLE = process.env.IMAGE_STYLE || "photo";
 
 await step("1/7 writing script", () => run("npx", ["tsx", "src/scripts/gen-script.ts"]));
 await step(`2/7 narrating (${voice})`, () => run("npx", ["tsx", voice === "eleven" ? "src/scripts/narrate-timed.ts" : "src/scripts/narrate-edge.ts"]));

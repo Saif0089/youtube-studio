@@ -7,3 +7,10 @@ out/
 public/
 src-tauri/target/
 src-tauri/gen/
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+
+# local Claude Code tooling (machine-specific)
+.plugin-config/

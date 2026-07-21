@@ -25,10 +25,13 @@ const INK = "#1a1a1a";
 const ACCENT = "#ff5a3c";
 const DIM = "#c4c4bd";
 
-const PopImage: React.FC<{ src: string; dur: number }> = ({ src, dur }) => {
+const PopImage: React.FC<{ src: string; dur: number; idx: number }> = ({ src, dur, idx }) => {
   const f = useCurrentFrame();
-  // gentle zoom that stays >= 1.0 so the drawing always fills the whole frame (no white bars)
-  const scale = interpolate(f, [0, dur], [1.0, 1.06], { extrapolateRight: "clamp", easing: Easing.inOut(Easing.ease) });
+  // Ken Burns: slow zoom + drift. Scale stays >= 1.06 so the ±1.2% pan never exposes a frame edge.
+  // Alternate zoom-in / zoom-out per image so consecutive shots don't feel identical.
+  const zoomIn = idx % 2 === 0;
+  const scale = interpolate(f, [0, dur], zoomIn ? [1.06, 1.13] : [1.13, 1.06], { extrapolateRight: "clamp", easing: Easing.inOut(Easing.ease) });
+  const panX = interpolate(f, [0, dur], idx % 2 === 0 ? [-1.2, 1.2] : [1.2, -1.2], { extrapolateRight: "clamp", easing: Easing.inOut(Easing.ease) });
   // clamp the fade so [0, fade, dur-fade, dur] is ALWAYS strictly increasing (short segments crashed Remotion)
   const fade = Math.min(8, Math.floor(dur / 3));
   const opacity = fade >= 1 && dur - fade > fade
@@ -36,7 +39,7 @@ const PopImage: React.FC<{ src: string; dur: number }> = ({ src, dur }) => {
     : 1;
   return (
     <AbsoluteFill style={{ opacity }}>
-      <Img src={staticFile(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />
+      <Img src={staticFile(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale}) translateX(${panX}%)` }} />
     </AbsoluteFill>
   );
 };
@@ -69,7 +72,7 @@ export const ExplainerVideo: React.FC<ExplainerProps> = (props) => {
         const dur = Math.max(1, end - from);
         return (
           <Sequence key={i} from={Math.max(0, from)} durationInFrames={dur}>
-            <PopImage src={src} dur={dur} />
+            <PopImage src={src} dur={dur} idx={i} />
           </Sequence>
         );
       })}
